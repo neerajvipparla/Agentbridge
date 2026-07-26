@@ -1,11 +1,17 @@
 {
   "name": "agentbridge",
   "version": "0.1.0",
-  "description": "Fork Claude Code chat sessions into OpenCode, versioned as local git commits. Phase 1 of a Claude Code <-> OpenCode context bridge.",
+  "description": "Fork Claude Code chat sessions into OpenCode and back, versioned as local git commits. A bidirectional Claude Code <-> OpenCode context bridge.",
   "type": "module",
   "bin": {
     "agentbridge": "./bin/agentbridge.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18"
   },
@@ -14,5 +20,23 @@
   },
   "dependencies": {
     "commander": "^12.1.0"
+  },
+  "keywords": [
+    "claude-code",
+    "opencode",
+    "cli",
+    "ai-agent",
+    "context-bridge",
+    "session-sync"
+  ],
+  "author": "neerajvipparla",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neerajvipparla/Agentbridge.git"
+  },
+  "homepage": "https://github.com/neerajvipparla/Agentbridge#readme",
+  "bugs": {
+    "url": "https://github.com/neerajvipparla/Agentbridge/issues"
   }
 }

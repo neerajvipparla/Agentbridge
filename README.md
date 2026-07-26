@@ -9,8 +9,9 @@ agentbridge list [-s claude|opencode] [--dir <path>] [--all]
 agentbridge show <session-id> [-s claude|opencode] [--dir <path>] [--all]
 agentbridge fork [session-id] [-s claude|opencode] [--dir <path>] [--dry-run]
                  [--title <t>] [--provider <id>] [--agent <name>]
-agentbridge sync [session-id] [--dir <path>] [--strategy timestamp|abort|persist-claude|persist-opencode]
-                 [--provider <id>] [--agent <name>] [--dry-run]
+agentbridge sync [session-id] [--dir <path>] [--dry-run]
+                 [--strategy timestamp|abort|persist-claude|persist-opencode]
+                 [--provider <id>] [--agent <name>]
 agentbridge watch [session-id] [--dir <path>] [--strategy timestamp|abort]
                   [--interval <ms>] [--provider <id>] [--agent <name>]
 agentbridge log [--dir <path>] [--limit <n>]
@@ -114,7 +115,7 @@ agentbridge sync                          # latest session pair in the ledger
 agentbridge sync <claude-uuid>            # by Claude session id
 agentbridge sync <ses_...>                # by OpenCode session id
 agentbridge sync --strategy abort         # refuse if both sides changed
-agentbridge sync --strategy timestamp     # merge by timestamp (default)
+agentbridge sync --strategy timestamp     # group by origin (default)
 ```
 
 - `timestamp` (default) - each side keeps its own new turns first, then the
@@ -128,9 +129,12 @@ agentbridge sync --strategy timestamp     # merge by timestamp (default)
 - `persist-claude` / `persist-opencode` - keep only one side's divergent new
   turns; the other side's are discarded entirely (not appended, not
   converted). The common baseline before the divergence is preserved on
-  both sides regardless. The discarded turns aren't gone forever - the
-  ledger's pre-sync commit still has them in its git history if you ever
-  need them back.
+  both sides regardless. **This is destructive and not recoverable**: the
+  discarded turns are exactly the turns created since the last sync, so
+  they were never in any ledger commit - the live Claude JSONL is fully
+  overwritten with the new merged state, and the discarded side's turns
+  are gone from disk. Run with `--dry-run` first if you're not sure which
+  side you want to keep.
 
 `sync` records its own ledger commit on a real change, so you can inspect or
 roll back a merge like any other fork. Re-running it with nothing new on
@@ -148,9 +152,12 @@ agentbridge watch --strategy abort    # stop and warn on conflicts instead
 ```
 
 Press **Ctrl-C** to stop. The default poll interval is 5 seconds.
-`watch` uses the same merge strategy as `sync` - with the default
-`timestamp` strategy it auto-merges both sides' new turns on every poll, so
-use `--strategy abort` if you'd rather review every conflict by hand.
+`watch` accepts the same `timestamp`/`abort` strategies as `sync` - with the
+default `timestamp` strategy it auto-merges both sides' new turns on every
+poll, so use `--strategy abort` if you'd rather review every conflict by
+hand. `persist-claude`/`persist-opencode` are **not** available on `watch` -
+they're a deliberate, one-shot `sync` action, not something left running
+unattended that repeatedly discards a side's turns.
 
 ### Reviewing what's been forked
 
@@ -249,8 +256,9 @@ config names its provider or agent differently than the defaults
 - File attachments, permission prompts, Claude Code slash commands, and
   OpenCode part types besides `text` / `reasoning` / `tool` aren't converted.
 - One session at a time; no batch mode.
-- `sync` merges by timestamp; it does not de-duplicate semantically
-  identical turns added independently on both sides.
+- `sync`'s strategies do not de-duplicate semantically identical turns added
+  independently on both sides - only exact-match turns (by id, or content
+  hash when no id is available) are recognized as "the same" turn.
 - The OpenCode SQLite fallback in `src/readers/opencode-reader.js` needs
   Node.js 22.5+ (`node:sqlite`). On older Node it silently falls back to the
   `opencode` CLI's own `export`, which can itself be incomplete while the

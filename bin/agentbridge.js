@@ -329,7 +329,13 @@ program
     });
 
     if (result.claudeNew !== undefined && result.opencodeNew !== undefined && (result.claudeNew > 0 || result.opencodeNew > 0)) {
-      console.log(`Syncing ${result.claudeNew} new Claude turns and ${result.opencodeNew} new OpenCode turns.`);
+      if (opts.strategy === "persist-claude") {
+        console.log(`Keeping ${result.claudeNew} new Claude turns; discarding ${result.opencodeNew} new OpenCode turns.`);
+      } else if (opts.strategy === "persist-opencode") {
+        console.log(`Keeping ${result.opencodeNew} new OpenCode turns; discarding ${result.claudeNew} new Claude turns.`);
+      } else {
+        console.log(`Syncing ${result.claudeNew} new Claude turns and ${result.opencodeNew} new OpenCode turns.`);
+      }
     }
     if (result.message) console.log(result.message);
     if (result.error) console.error(result.error);

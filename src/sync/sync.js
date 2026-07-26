@@ -4,9 +4,12 @@
 //
 // Given a known session pair (Claude id ↔ OpenCode id) recorded in the ledger,
 // this module reads the current state of both tools, compares each to the last
-// synced state stored in the ledger, and merges only the new turns. The default
-// strategy is "timestamp": new turns from both sides are appended and sorted
-// by time. The "abort" strategy refuses when both sides have new turns.
+// synced state stored in the ledger, and merges only the new turns, according
+// to one of four strategies (see STRATEGIES below): "timestamp" (default) -
+// each side's own new turns first, then the other side's, appended - not
+// interleaved by real time; "abort" - refuses when both sides have new turns;
+// "persist-claude" / "persist-opencode" - keep only one side's divergent new
+// turns, discarding the other's entirely (sync-only, not available on watch).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -66,12 +69,12 @@ export function diffSync(current, last) {
 }
 
 /**
- * Merge new turns from both sides into a single chronological sequence.
- * Returns the merged data in both tool-specific forms.
+ * Refuse to merge if both sides have new turns; otherwise merge normally
+ * (there is nothing to abort over when only one side changed).
  *
  * @param {object} current - current state of both sides
  * @param {object} last - last synced state of both sides
- * @param {string} strategy - "timestamp" or "abort"
+ * @param {{claudeNew: object[], opencodeNew: object[]}} diff - from diffSync
  * @param {object} opts - conversion options (directory, etc.)
  * @returns {{claudeEntries: object[], opencodeMessages: object[], claudeNew: object[], opencodeNew: object[]}}
  */
@@ -82,7 +85,9 @@ function mergeAbort(current, last, diff, opts) {
     const err = new Error(
       `Both sides have new turns since the last sync.\n` +
         `Claude: ${claudeNew.length} new turns. OpenCode: ${opencodeNew.length} new turns.\n` +
-        `Run with --strategy timestamp to merge by timestamp, or resolve manually.`
+        `Run with --strategy timestamp to keep both sides' turns (grouped by origin), ` +
+        `--strategy persist-claude / persist-opencode to keep only one side and discard the other, ` +
+        `or resolve manually.`
     );
     err.claudeNew = claudeNew;
     err.opencodeNew = opencodeNew;

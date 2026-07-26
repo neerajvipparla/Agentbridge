@@ -6,6 +6,15 @@ name: Publish to npm
 # on the registry, so a push to main that doesn't bump the version is a
 # harmless no-op instead of a failed "you cannot publish over an existing
 # version" error.
+#
+# Publishes via npm Trusted Publishing (OIDC) - no NPM_TOKEN secret. A
+# long-lived token that bypasses 2FA still hit an EOTP error on direct
+# publish (npm is phasing that bypass out entirely by ~Jan 2027; see
+# https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/).
+# Trusted Publishing needs npm >=11.5.1 / Node >=22.14.0 (Node 24 below
+# ships npm 11.6.2) and a matching "Trusted Publisher" entry configured
+# on the package's npmjs.com settings page - see the PR this shipped in
+# for the exact values.
 on:
   push:
     branches:
@@ -16,7 +25,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for npm provenance
+  id-token: write # required for both npm provenance and trusted publishing
 
 jobs:
   publish:
@@ -54,5 +63,3 @@ jobs:
       - name: Publish
         if: steps.version-check.outputs.skip != 'true'
         run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

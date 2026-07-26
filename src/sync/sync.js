@@ -1,4 +1,4 @@
-// src/sync.js
+// src/sync/sync.js
 //
 // Phase 2: bidirectional sync between Claude Code and OpenCode.
 //
@@ -10,13 +10,13 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { convertToOpenCode } from "./converter.js";
-import { convertToClaude } from "./opencode-to-claude.js";
-import { parseSessionFile, toConversation, claudeProjectsDir, encodeProjectPath } from "./claude-reader.js";
-import { exportSession } from "./opencode-reader.js";
-import { writeClaudeSession } from "./claude-writer.js";
-import { importIntoOpenCode } from "./opencode-import.js";
-import { findMapping, readLedgerPair, commitFork } from "./git-ledger.js";
+import { convertToOpenCode } from "../converters/claude-to-opencode.js";
+import { convertToClaude } from "../converters/opencode-to-claude.js";
+import { parseSessionFile, toConversation, claudeProjectsDir, encodeProjectPath } from "../readers/claude-reader.js";
+import { exportSession } from "../readers/opencode-reader.js";
+import { writeClaudeSession } from "../writers/claude-writer.js";
+import { importIntoOpenCode } from "../writers/opencode-import.js";
+import { findMapping, readLedgerPair, commitFork } from "../ledger/git-ledger.js";
 
 function toEpochMs(isoOrMs) {
   if (typeof isoOrMs === "number") return isoOrMs;

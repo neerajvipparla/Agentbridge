@@ -1,13 +1,13 @@
-// src/opencode-to-claude.js
+// src/converters/opencode-to-claude.js
 //
 // Converts an OpenCode session (the `opencode export` JSON shape, which is the
 // same shape `opencode import` accepts) into a Claude Code JSONL transcript.
 //
-// This is the reverse of `src/converter.js`. Where the forward converter folds a
-// tool_use + tool_result pair into a single OpenCode `tool` part, this module
-// expands each `tool` part back into a Claude assistant `tool_use` block plus a
-// synthetic user entry carrying the matching `tool_result` block (and a
-// `toolUseResult` fallback for older Claude Code readers).
+// This is the reverse of `src/converters/claude-to-opencode.js`. Where the forward
+// converter folds a tool_use + tool_result pair into a single OpenCode `tool`
+// part, this module expands each `tool` part back into a Claude assistant
+// `tool_use` block plus a synthetic user entry carrying the matching
+// `tool_result` block (and a `toolUseResult` fallback for older Claude Code readers).
 
 import crypto from "node:crypto";
 

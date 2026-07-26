@@ -1,4 +1,4 @@
-// src/git-ledger.js
+// src/ledger/git-ledger.js
 //
 // A tiny local git repo used purely as a versioned ledger of every fork
 // agentbridge performs. It is NOT your project's own git repo - it lives

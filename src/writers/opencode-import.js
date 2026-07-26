@@ -1,4 +1,4 @@
-// src/opencode-import.js
+// src/writers/opencode-import.js
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

@@ -29,7 +29,7 @@ node --test test/converter.test.js   # runs one file
 
 Use `node --test` bare. `node --test test/` fails on Node 24 — the directory is treated as a module entry point and you get `MODULE_NOT_FOUND`.
 
-- One test file per module: `src/converter.js` → `test/converter.test.js`
+- One test file per module: `src/converters/claude-to-opencode.js` → `test/claude-to-opencode.test.js`
 - Real captured input in `test/fixtures/*.jsonl`, hand-trimmed to the smallest transcript that exhibits the case
 - Import `{ describe, it }` from `node:test`, `assert` from `node:assert/strict`
 
@@ -41,7 +41,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { convertToOpenCode } from "../src/converter.js";
+import { convertToOpenCode } from "../src/converters/claude-to-opencode.js";
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const load = (name) =>

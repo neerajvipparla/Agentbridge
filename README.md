@@ -113,12 +113,12 @@ replaced by `-` (e.g. `/Users/me/.config/my_app` →
 Each line is an entry with a `type` (`user`/`assistant`/...), a `message`
 object whose `content` is either a string or an array of blocks (`text`,
 `thinking`, `tool_use`, `tool_result`), and Claude's own `uuid`/`parentUuid`
-chain. `src/claude-reader.js` finds and parses these files; `toConversation()`
+chain. `src/readers/claude-reader.js` finds and parses these files; `toConversation()`
 filters out subagent ("sidechain") and internal ("meta") entries so you get
 the same linear conversation you'd see in the Claude Code TUI.
 
-`src/converter.js` turns Claude Code into OpenCode's import/export JSON shape;
-`src/opencode-to-claude.js` runs the reverse direction. Both are built on the
+`src/converters/claude-to-opencode.js` turns Claude Code into OpenCode's import/export
+JSON shape; `src/converters/opencode-to-claude.js` runs the reverse direction. Both are built on the
 same import/export JSON contract that was reverse-engineered from
 `opencode@1.18.5` by round-tripping synthetic sessions through
 `opencode import ...` / `opencode export ...` and reading OpenCode's generated

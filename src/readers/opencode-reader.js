@@ -1,4 +1,4 @@
-// src/opencode-reader.js
+// src/readers/opencode-reader.js
 //
 // Reads OpenCode's local session storage via the `opencode` CLI.
 //

@@ -75,10 +75,10 @@ export function diffSync(current, last) {
  * @param {object} opts - conversion options (directory, etc.)
  * @returns {{claudeEntries: object[], opencodeMessages: object[], claudeNew: object[], opencodeNew: object[]}}
  */
-export function mergeSync(current, last, strategy, opts = {}) {
-  const { claudeNew, opencodeNew } = diffSync(current, last);
+function mergeAbort(current, last, diff, opts) {
+  const { claudeNew, opencodeNew } = diff;
 
-  if (strategy === "abort" && claudeNew.length > 0 && opencodeNew.length > 0) {
+  if (claudeNew.length > 0 && opencodeNew.length > 0) {
     const err = new Error(
       `Both sides have new turns since the last sync.\n` +
         `Claude: ${claudeNew.length} new turns. OpenCode: ${opencodeNew.length} new turns.\n` +
@@ -89,6 +89,21 @@ export function mergeSync(current, last, strategy, opts = {}) {
     throw err;
   }
 
+  // Nothing to abort over - only one side changed (or neither). Merge normally.
+  return mergeTimestamp(current, last, diff, opts);
+}
+
+/**
+ * Merge new turns from both sides into a single sequence per side.
+ *
+ * @param {object} current - current state of both sides
+ * @param {object} last - last synced state of both sides
+ * @param {{claudeNew: object[], opencodeNew: object[]}} diff - from diffSync
+ * @param {object} opts - conversion options (directory, etc.)
+ * @returns {{claudeEntries: object[], opencodeMessages: object[], claudeNew: object[], opencodeNew: object[]}}
+ */
+function mergeTimestamp(current, last, diff, opts) {
+  const { claudeNew, opencodeNew } = diff;
   const cur = normalizeCurrent(current);
   const lst = normalizeCurrent(last);
 
@@ -190,6 +205,29 @@ export function mergeSync(current, last, strategy, opts = {}) {
   }
 
   return { claudeEntries: mergedClaude, opencodeMessages: mergedOpenCode, claudeNew, opencodeNew };
+}
+
+const STRATEGIES = {
+  timestamp: mergeTimestamp,
+  abort: mergeAbort,
+};
+
+/**
+ * Merge new turns from both sides according to the given strategy.
+ *
+ * @param {object} current - current state of both sides
+ * @param {object} last - last synced state of both sides
+ * @param {string} strategy - one of the keys of STRATEGIES
+ * @param {object} opts - conversion options (directory, etc.)
+ * @returns {{claudeEntries: object[], opencodeMessages: object[], claudeNew: object[], opencodeNew: object[]}}
+ */
+export function mergeSync(current, last, strategy, opts = {}) {
+  const diff = diffSync(current, last);
+  const fn = STRATEGIES[strategy];
+  if (!fn) {
+    throw new Error(`Unknown strategy "${strategy}". Use one of: ${Object.keys(STRATEGIES).join(", ")}.`);
+  }
+  return fn(current, last, diff, opts);
 }
 
 /**

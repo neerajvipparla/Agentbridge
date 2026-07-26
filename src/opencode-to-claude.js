@@ -44,6 +44,7 @@ export function convertToClaude(session, opts = {}) {
     directory,
     model = "claude-opus-4-8",
     version = "imported-from-opencode",
+    sessionId: sessionIdOverride,
   } = opts;
 
   const opencodeSessionId = session?.info?.id;
@@ -55,7 +56,9 @@ export function convertToClaude(session, opts = {}) {
   // OpenCode `ses_...` id (the formats are intentionally different). Re-importing
   // the same OpenCode session produces the same Claude id, so this stays
   // idempotent.
-  const sessionId = deriveUuid(opencodeSessionId);
+  // During sync, the caller can override with the existing Claude session id so
+  // the new turns are written into the same Claude transcript.
+  const sessionId = sessionIdOverride || deriveUuid(opencodeSessionId);
   const cwd = directory || session.info?.directory || process.cwd();
 
   const entries = [];

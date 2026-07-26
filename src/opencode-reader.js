@@ -11,6 +11,19 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
+
+let DatabaseSync;
+function getDatabaseSync() {
+  if (DatabaseSync) return DatabaseSync;
+  try {
+    const require = createRequire(import.meta.url);
+    ({ DatabaseSync } = require("node:sqlite"));
+  } catch {
+    // node:sqlite is only available in Node.js 22.5+. Fall back to CLI export.
+  }
+  return DatabaseSync;
+}
 
 function run(args, maxBytes = 100 * 1024 * 1024) {
   try {
@@ -85,8 +98,121 @@ export function findLatestSession() {
   return sessions[0] ? { id: sessions[0].id, session: exportSession(sessions[0].id) } : null;
 }
 
-/** Export one OpenCode session as JSON (the same shape `opencode import` accepts). */
+function openCodeDbPath() {
+  const home = os.homedir();
+  if (process.platform === "darwin" || process.platform === "linux") {
+    return path.join(home, ".local", "share", "opencode", "opencode.db");
+  }
+  if (process.platform === "win32") {
+    return path.join(process.env.LOCALAPPDATA || home, "opencode", "opencode.db");
+  }
+  return path.join(home, ".local", "share", "opencode", "opencode.db");
+}
+
+/**
+ * Read a session straight from OpenCode's SQLite database.
+ *
+ * This is a fallback / augmentation for `opencode export`. The CLI export has
+ * proven unreliable in live situations (while the OpenCode server is running,
+ * or when an imported session is continued): it can return empty parts, drop
+ * imported messages, or only reflect the server's in-memory state. The SQLite
+ * file is the durable source of truth, so reading it directly is more robust.
+ *
+ * Returns `null` if the database is unavailable, the schema is unexpected, or
+ * the session is not found, so callers can fall back to CLI export.
+ */
+export function readSessionFromDatabase(sessionId, dbPathOverride) {
+  const DatabaseSync = getDatabaseSync();
+  if (!DatabaseSync) return null;
+  const dbPath = dbPathOverride || openCodeDbPath();
+  if (!fs.existsSync(dbPath)) return null;
+
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+  } catch {
+    return null;
+  }
+
+  try {
+    // Message rows are stored as JSON blobs with a shape like:
+    //   {"role":"user", "time":{"created":...}, "agent":..., "model":...}
+    //   {"role":"assistant", "parentID":"...", "time":{...}, "tokens":...}
+    // The `id` column is the message id, but it is not duplicated inside the
+    // JSON blob, so we inject it as `info.id` (and `info.sessionID`, etc.) to
+    // match the public export shape.
+    const messageStmt = db.prepare(
+      "SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created, id"
+    );
+    const messageRows = messageStmt.all(sessionId);
+    if (messageRows.length === 0) return null;
+
+    const partStmt = db.prepare(
+      "SELECT id, message_id, data FROM part WHERE session_id = ? ORDER BY time_created, id"
+    );
+    const partRows = partStmt.all(sessionId);
+
+    const partsByMessage = new Map();
+    for (const p of partRows) {
+      const list = partsByMessage.get(p.message_id) || [];
+      const partData = JSON.parse(p.data);
+      list.push({ ...partData, id: p.id, sessionID: sessionId, messageID: p.message_id });
+      partsByMessage.set(p.message_id, list);
+    }
+
+    const messages = [];
+    for (const row of messageRows) {
+      const msgData = JSON.parse(row.data);
+      const info = {
+        id: row.id,
+        sessionID: sessionId,
+        ...msgData,
+        time: msgData.time,
+      };
+      const parts = partsByMessage.get(row.id) || [];
+      messages.push({ info, parts });
+    }
+
+    const sessionStmt = db.prepare(
+      "SELECT id, title, directory, version, time_created, time_updated FROM session WHERE id = ?"
+    );
+    const sessionRow = sessionStmt.get(sessionId);
+    if (!sessionRow) return null;
+
+    const info = {
+      id: sessionRow.id,
+      title: sessionRow.title,
+      directory: sessionRow.directory,
+      version: sessionRow.version,
+      time: {
+        created: sessionRow.time_created,
+        updated: sessionRow.time_updated,
+      },
+    };
+
+    return { info, messages };
+  } catch {
+    // Schema or data shape changed; fall back to CLI export.
+    return null;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Export one OpenCode session as JSON (the same shape `opencode import` accepts).
+ *
+ * We prefer the SQLite database reader because the CLI `export` is lossy when
+ * the OpenCode server is running or when an imported session is continued. The
+ * CLI export is kept as a fallback for portability / future schema changes.
+ */
 export function exportSession(sessionId) {
+  const fromDb = readSessionFromDatabase(sessionId);
+  if (fromDb) return fromDb;
   const out = runToFile(["export", sessionId]);
   return JSON.parse(out);
 }

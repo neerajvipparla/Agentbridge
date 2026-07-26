@@ -90,8 +90,42 @@ export function mergeSync(current, last, strategy, opts = {}) {
   }
 
   const cur = normalizeCurrent(current);
-  const mergedClaude = [...cur.claude];
-  const mergedOpenCode = [...cur.opencode];
+  const lst = normalizeCurrent(last);
+
+  // Always build the merged state from the last synced baseline, then add the
+  // genuinely new turns. This protects against OpenCode's `export` returning a
+  // partial or stale session (e.g. while the server is running, or when an
+  // imported session loses its original messages after being continued). Using
+  // the current state as the base would silently drop any history that OpenCode
+  // failed to include.
+  const mergedClaude = [...lst.claude];
+  const mergedOpenCode = [...lst.opencode];
+
+  // Preserve the original session ids across both tools so the merged output
+  // continues to be written to the same Claude JSONL and the same OpenCode
+  // session. Without this, converted turns would create a new session id and
+  // `writeClaudeSession` / `importIntoOpenCode` would fork the conversation
+  // instead of updating it in place.
+  const claudeSessionId = lst.claude[0]?.sessionId || opts.claudeSessionId;
+  const opencodeSessionId = lst.opencode[0]?.info?.sessionID || opts.opencodeId;
+
+  // Add genuinely new turns reported by the current state.
+  const existingClaudeKeys = new Set(mergedClaude.map(claudeTurnKey));
+  for (const e of claudeNew) {
+    const k = claudeTurnKey(e);
+    if (!existingClaudeKeys.has(k)) {
+      mergedClaude.push(e);
+      existingClaudeKeys.add(k);
+    }
+  }
+  const existingOpenCodeKeys = new Set(mergedOpenCode.map(opencodeTurnKey));
+  for (const m of opencodeNew) {
+    const k = opencodeTurnKey(m);
+    if (!existingOpenCodeKeys.has(k)) {
+      mergedOpenCode.push(m);
+      existingOpenCodeKeys.add(k);
+    }
+  }
 
   // Fold Claude-only new turns into OpenCode.
   if (claudeNew.length > 0) {
@@ -100,12 +134,12 @@ export function mergeSync(current, last, strategy, opts = {}) {
       title: opts.title ?? "Synced session",
       providerID: opts.providerID,
       agent: opts.agent,
+      opencodeSessionId,
     }).messages;
-    const currentOpenCodeKeys = new Set(mergedOpenCode.map(opencodeTurnKey));
     for (const m of newOpenCodeMessages) {
-      if (!currentOpenCodeKeys.has(opencodeTurnKey(m))) {
+      if (!existingOpenCodeKeys.has(opencodeTurnKey(m))) {
         mergedOpenCode.push(m);
-        currentOpenCodeKeys.add(opencodeTurnKey(m));
+        existingOpenCodeKeys.add(opencodeTurnKey(m));
       }
     }
   }
@@ -114,13 +148,12 @@ export function mergeSync(current, last, strategy, opts = {}) {
   if (opencodeNew.length > 0) {
     const newClaudeEntries = convertToClaude(
       { info: { id: opts.opencodeId || "placeholder", directory: opts.directory }, messages: opencodeNew },
-      { directory: opts.directory }
+      { directory: opts.directory, sessionId: claudeSessionId }
     );
-    const currentClaudeKeys = new Set(mergedClaude.map(claudeTurnKey));
     for (const e of newClaudeEntries) {
-      if (!currentClaudeKeys.has(claudeTurnKey(e))) {
+      if (!existingClaudeKeys.has(claudeTurnKey(e))) {
         mergedClaude.push(e);
-        currentClaudeKeys.add(claudeTurnKey(e));
+        existingClaudeKeys.add(claudeTurnKey(e));
       }
     }
   }
@@ -239,7 +272,14 @@ export function syncSession({ ledgerDir, dir, claudeId, opencodeId, strategy, dr
     throw err;
   }
 
-  if (merged.claudeNew.length === 0 && merged.opencodeNew.length === 0) {
+  const cur = normalizeCurrent(current);
+  const baseline = normalizeCurrent(last);
+  const curClaudeKeys = new Set(cur.claude.map(claudeTurnKey));
+  const curOpenCodeKeys = new Set(cur.opencode.map(opencodeTurnKey));
+  const missingClaude = baseline.claude.some((e) => !curClaudeKeys.has(claudeTurnKey(e)));
+  const missingOpenCode = baseline.opencode.some((m) => !curOpenCodeKeys.has(opencodeTurnKey(m)));
+
+  if (merged.claudeNew.length === 0 && merged.opencodeNew.length === 0 && !missingClaude && !missingOpenCode) {
     return { ok: true, changed: false, message: "No changes on either side since the last sync." };
   }
 

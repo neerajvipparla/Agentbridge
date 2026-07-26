@@ -11,9 +11,21 @@ import fs from "node:fs";
 import { syncSession } from "./sync.js";
 import { exportSession } from "./opencode-reader.js";
 
+function hashOpenCode(s) {
+  if (!s || !s.messages) return "";
+  const lines = [];
+  for (const m of s.messages) {
+    lines.push(m.info?.id ?? "?");
+    for (const p of m.parts ?? []) {
+      lines.push(`${p.type}:${p.text ?? ""}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 export function watchSession({ claudeFile, claudeId, opencodeId, ledgerDir, dir, strategy, interval, provider, agent, onEvent }) {
   let lastClaudeMtime = 0;
-  let lastOpenCodeUpdated = 0;
+  let lastOpenCodeSnapshot = "";
   let pendingTimer = null;
   let running = false;
   let watcher = null;
@@ -32,12 +44,12 @@ export function watchSession({ claudeFile, claudeId, opencodeId, ledgerDir, dir,
     }
   };
 
-  const getOpenCodeUpdated = () => {
+  const getOpenCodeSnapshot = () => {
     try {
       const s = exportSession(opencodeId);
-      return s.info?.time?.updated || 0;
+      return hashOpenCode(s);
     } catch {
-      return 0;
+      return "";
     }
   };
 
@@ -63,9 +75,9 @@ export function watchSession({ claudeFile, claudeId, opencodeId, ledgerDir, dir,
     if (result.message) {
       event("sync", result.message);
     }
-    // Refresh baseline timestamps after a successful sync.
+    // Refresh baseline after a successful sync.
     lastClaudeMtime = getClaudeMtime();
-    lastOpenCodeUpdated = getOpenCodeUpdated();
+    lastOpenCodeSnapshot = getOpenCodeSnapshot();
   };
 
   const scheduleSync = () => {
@@ -79,13 +91,13 @@ export function watchSession({ claudeFile, claudeId, opencodeId, ledgerDir, dir,
   const checkChanges = () => {
     if (stopped) return;
     const claudeMtime = getClaudeMtime();
-    const openCodeUpdated = getOpenCodeUpdated();
+    const openCodeSnapshot = getOpenCodeSnapshot();
     const claudeChanged = claudeMtime > lastClaudeMtime;
-    const openCodeChanged = openCodeUpdated > lastOpenCodeUpdated;
+    const openCodeChanged = openCodeSnapshot !== lastOpenCodeSnapshot;
 
     if (claudeChanged || openCodeChanged) {
       lastClaudeMtime = claudeMtime;
-      lastOpenCodeUpdated = openCodeChanged ? openCodeUpdated : lastOpenCodeUpdated;
+      if (openCodeChanged) lastOpenCodeSnapshot = openCodeSnapshot;
       if (claudeChanged) event("change", "Claude session file changed");
       if (openCodeChanged) event("change", "OpenCode session updated");
       scheduleSync();
@@ -94,7 +106,7 @@ export function watchSession({ claudeFile, claudeId, opencodeId, ledgerDir, dir,
 
   // Initial baseline.
   lastClaudeMtime = getClaudeMtime();
-  lastOpenCodeUpdated = getOpenCodeUpdated();
+  lastOpenCodeSnapshot = getOpenCodeSnapshot();
 
   watcher = fs.watch(claudeFile, (eventType) => {
     if (eventType === "change") {

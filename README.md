@@ -174,6 +174,12 @@ forks if your OpenCode config names them differently.
 - One session at a time; no batch mode.
 - `sync` merges by timestamp; it does not yet de-duplicate semantically
   identical turns added independently on both sides.
+- OpenCode's `export` command can be lossy while the OpenCode server is running
+  or when a session was imported and then continued. `agentbridge` now reads
+  OpenCode's SQLite database directly as a fallback, and `sync` rebuilds the
+  merged state from the ledger baseline so history is not silently dropped.
+  However, uncommitted/in-progress turns that OpenCode has not yet flushed to
+  disk cannot be synced until OpenCode persists them.
 
 ## Phase 2: bidirectional sync (implemented)
 
@@ -184,9 +190,14 @@ The `agentbridge sync` command implements steps 1-3:
    same ledger.
 2. **The ledger is the source of truth for "what did we last sync".**
    `sync` reads the last ledger commit for the session pair, diffs it against
-   the current state of both tools, and only merges the new turns.
+   the current state of both tools, and only merges the new turns. The merged
+   state is always rebuilt from the ledger baseline so a partial OpenCode export
+   (e.g. while the server is running) cannot erase history.
 3. **Conflict handling:** `timestamp` (default) appends both sides' new turns
    in chronological order; `abort` refuses and reports the conflict so you
    can resolve manually.
 4. **Live sync:** `agentbridge watch` monitors the Claude JSONL file with
-   `fs.watch` and polls OpenCode's session list, auto-syncing on change.
+   `fs.watch` and polls OpenCode's state, auto-syncing on change.
+5. **OpenCode export robustness:** `opencode-reader.js` falls back to reading
+   OpenCode's SQLite database directly when the CLI `export` is incomplete. The
+   fallback requires Node.js 22.5+ (`node:sqlite`).

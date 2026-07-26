@@ -105,4 +105,25 @@ const texts = m5.opencodeMessages.map((m) => m.parts[0].text);
 assert.deepEqual(texts, ["hello", "hi there", "claude q", "claude a", "openc q", "openc a"]);
 console.log("PASS T5");
 
+console.log("T6: OpenCode export drops baseline messages (server/live export bug)");
+const currentOpenCodePartial = {
+  claudeEntries: baseClaude,
+  opencodeMessages: [
+    ocMsg("user", "msg_u3", 1785060004000, "openc q", "msg_a1"),
+    ocMsg("assistant", "msg_a3", 1785060005000, "openc a", "msg_u3"),
+  ],
+};
+const m6 = mergeSync(currentOpenCodePartial, baseOpenCode, "timestamp", { directory: "/tmp", opencodeId: "ses_test" });
+assert.equal(m6.opencodeMessages.length, 4, "OpenCode merge should preserve baseline + new turns");
+assert.equal(m6.claudeEntries.length, 4, "Claude merge should preserve baseline + new turns");
+const texts6 = m6.opencodeMessages.map((m) => m.parts[0].text);
+assert.deepEqual(texts6, ["hello", "hi there", "openc q", "openc a"]);
+console.log("PASS T6");
+
+console.log("T7: merged turns keep the original session ids");
+const m7 = mergeSync(currentBoth, baseOpenCode, "timestamp", { directory: "/tmp", opencodeId: "ses_test" });
+assert.ok(m7.claudeEntries.every((e) => e.sessionId === "claude_test"), "all Claude entries keep the original session id");
+assert.ok(m7.opencodeMessages.every((m) => m.info.sessionID === "ses_test"), "all OpenCode messages keep the original session id");
+console.log("PASS T7");
+
 console.log("\nALL SYNC TESTS PASSED");

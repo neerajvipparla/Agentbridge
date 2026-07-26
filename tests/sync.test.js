@@ -153,4 +153,42 @@ assert.ok(m7.claudeEntries.every((e) => e.sessionId === "claude_test"), "all Cla
 assert.ok(m7.opencodeMessages.every((m) => m.info.sessionID === "ses_test"), "all OpenCode messages keep the original session id");
 console.log("PASS T7");
 
+console.log("T8: persist-claude keeps Claude's new turns, discards OpenCode's");
+const m8 = mergeSync(currentBoth, baseOpenCode, "persist-claude", { directory: "/tmp", opencodeId: "ses_test" });
+assert.equal(m8.claudeEntries.length, 4, "baseline + Claude's 2 new turns");
+assert.equal(m8.opencodeMessages.length, 4, "baseline + Claude's 2 new turns, converted");
+const opencodeTexts8 = m8.opencodeMessages.map((m) => m.parts[0].text);
+assert.deepEqual(
+  opencodeTexts8,
+  ["hello", "hi there", "claude q", "claude a"],
+  "OpenCode's divergent turns (openc q/openc a) are discarded entirely"
+);
+console.log("PASS T8");
+
+console.log("T9: persist-opencode keeps OpenCode's new turns, discards Claude's");
+const m9 = mergeSync(currentBoth, baseOpenCode, "persist-opencode", { directory: "/tmp", opencodeId: "ses_test" });
+assert.equal(m9.opencodeMessages.length, 4, "baseline + OpenCode's 2 new turns");
+assert.equal(m9.claudeEntries.length, 4, "baseline + OpenCode's 2 new turns, converted");
+const opencodeTexts9 = m9.opencodeMessages.map((m) => m.parts[0].text);
+assert.deepEqual(opencodeTexts9, ["hello", "hi there", "openc q", "openc a"], "OpenCode keeps its own native turns");
+const claudeVersions9 = m9.claudeEntries.map((e) => e.version);
+assert.deepEqual(
+  claudeVersions9,
+  ["1.0", "1.0", "imported-from-opencode", "imported-from-opencode"],
+  "Claude's divergent turns (claude q/claude a) are discarded; the kept turns are converted from OpenCode"
+);
+console.log("PASS T9");
+
+console.log("T10: persist-opencode with no new OpenCode turns is a true no-op");
+const currentOpenCodeUnchanged = {
+  claudeEntries: currentBoth.claudeEntries,
+  opencodeMessages: baseOpenCode.opencode,
+};
+const m10 = mergeSync(currentOpenCodeUnchanged, baseOpenCode, "persist-opencode", { directory: "/tmp", opencodeId: "ses_test" });
+assert.equal(m10.claudeEntries.length, 2, "no OpenCode turns to persist; Claude's divergent turns are discarded");
+assert.equal(m10.opencodeMessages.length, 2, "OpenCode side is unchanged from baseline");
+const claudeTexts10 = m10.claudeEntries.map((e) => e.message.content);
+assert.deepEqual(claudeTexts10, ["hello", "hi there"], "merged Claude content matches the baseline exactly - nothing new was persisted");
+console.log("PASS T10");
+
 console.log("\nALL SYNC TESTS PASSED");

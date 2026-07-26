@@ -194,9 +194,114 @@ function mergeTimestamp(current, last, diff, opts) {
   return { claudeEntries: mergedClaude, opencodeMessages: mergedOpenCode, claudeNew, opencodeNew };
 }
 
+/**
+ * Keep only Claude's divergent new turns; OpenCode's are discarded entirely
+ * (not appended, not converted). The common baseline is preserved on both
+ * sides. opencodeNew is still returned (unused in the merge) so the CLI can
+ * report how many turns were discarded.
+ */
+function mergePersistClaude(current, last, diff, opts) {
+  const { claudeNew, opencodeNew } = diff;
+  const lst = normalizeCurrent(last);
+
+  const mergedClaude = [...lst.claude];
+  const existingClaudeKeys = new Set(mergedClaude.map(claudeTurnKey));
+  for (const e of claudeNew) {
+    const k = claudeTurnKey(e);
+    if (!existingClaudeKeys.has(k)) {
+      mergedClaude.push(e);
+      existingClaudeKeys.add(k);
+    }
+  }
+
+  const mergedOpenCode = [...lst.opencode];
+  if (claudeNew.length > 0) {
+    const existingOpenCodeKeys = new Set(mergedOpenCode.map(opencodeTurnKey));
+    const opencodeSessionId = lst.opencode[0]?.info?.sessionID || opts.opencodeId;
+    const newOpenCodeMessages = convertToOpenCode(claudeNew, {
+      directory: opts.directory,
+      title: opts.title ?? "Synced session",
+      providerID: opts.providerID,
+      agent: opts.agent,
+      opencodeSessionId,
+    }).messages;
+    for (const m of newOpenCodeMessages) {
+      const k = opencodeTurnKey(m);
+      if (!existingOpenCodeKeys.has(k)) {
+        mergedOpenCode.push(m);
+        existingOpenCodeKeys.add(k);
+      }
+    }
+  }
+
+  let prevUuid = null;
+  for (const e of mergedClaude) {
+    e.parentUuid = prevUuid;
+    prevUuid = e.uuid;
+  }
+  let prevOpenCodeId = null;
+  for (const m of mergedOpenCode) {
+    m.info.parentID = prevOpenCodeId || m.info.sessionID;
+    prevOpenCodeId = m.info.id;
+  }
+
+  return { claudeEntries: mergedClaude, opencodeMessages: mergedOpenCode, claudeNew, opencodeNew };
+}
+
+/**
+ * Mirror of mergePersistClaude: keep only OpenCode's divergent new turns,
+ * discard Claude's entirely.
+ */
+function mergePersistOpencode(current, last, diff, opts) {
+  const { claudeNew, opencodeNew } = diff;
+  const lst = normalizeCurrent(last);
+
+  const mergedOpenCode = [...lst.opencode];
+  const existingOpenCodeKeys = new Set(mergedOpenCode.map(opencodeTurnKey));
+  for (const m of opencodeNew) {
+    const k = opencodeTurnKey(m);
+    if (!existingOpenCodeKeys.has(k)) {
+      mergedOpenCode.push(m);
+      existingOpenCodeKeys.add(k);
+    }
+  }
+
+  const mergedClaude = [...lst.claude];
+  if (opencodeNew.length > 0) {
+    const existingClaudeKeys = new Set(mergedClaude.map(claudeTurnKey));
+    const claudeSessionId = lst.claude[0]?.sessionId || opts.claudeSessionId;
+    const newClaudeEntries = convertToClaude(
+      { info: { id: opts.opencodeId || "placeholder", directory: opts.directory }, messages: opencodeNew },
+      { directory: opts.directory, sessionId: claudeSessionId }
+    );
+    for (const e of newClaudeEntries) {
+      const k = claudeTurnKey(e);
+      if (!existingClaudeKeys.has(k)) {
+        mergedClaude.push(e);
+        existingClaudeKeys.add(k);
+      }
+    }
+  }
+
+  let prevUuid = null;
+  for (const e of mergedClaude) {
+    e.parentUuid = prevUuid;
+    prevUuid = e.uuid;
+  }
+  let prevOpenCodeId = null;
+  for (const m of mergedOpenCode) {
+    m.info.parentID = prevOpenCodeId || m.info.sessionID;
+    prevOpenCodeId = m.info.id;
+  }
+
+  return { claudeEntries: mergedClaude, opencodeMessages: mergedOpenCode, claudeNew, opencodeNew };
+}
+
 const STRATEGIES = {
   timestamp: mergeTimestamp,
   abort: mergeAbort,
+  "persist-claude": mergePersistClaude,
+  "persist-opencode": mergePersistOpencode,
 };
 
 /**
@@ -271,8 +376,12 @@ export function syncSession({ ledgerDir, dir, claudeId, opencodeId, strategy, dr
     };
   }
 
-  if (strategy !== "timestamp" && strategy !== "abort") {
-    return { ok: false, error: `Unknown strategy "${strategy}". Use "timestamp" or "abort".`, exitCode: 1 };
+  if (!(strategy in STRATEGIES)) {
+    return {
+      ok: false,
+      error: `Unknown strategy "${strategy}". Use one of: ${Object.keys(STRATEGIES).join(", ")}.`,
+      exitCode: 1,
+    };
   }
 
   let merged;

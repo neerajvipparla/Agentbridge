@@ -290,7 +290,11 @@ program
   .description("Reconcile a conversation that has been edited in both tools")
   .argument("[session-id]", "Claude or OpenCode session id (defaults to the most recently forked session in the ledger)")
   .option("-d, --dir <path>", "project directory (defaults to cwd)", process.cwd())
-  .option("-s, --strategy <strategy>", 'merge strategy: "timestamp" (default) or "abort"', "timestamp")
+  .option(
+    "-s, --strategy <strategy>",
+    'merge strategy: "timestamp" (default), "abort", "persist-claude", or "persist-opencode"',
+    "timestamp"
+  )
   .option("--provider <providerID>", "OpenCode provider id for new Claude turns", "anthropic")
   .option("--agent <agent>", "OpenCode agent name for new Claude turns", "build")
   .option("--dry-run", "compute the merge but skip writing files or importing", false)

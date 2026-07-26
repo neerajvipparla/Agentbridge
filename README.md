@@ -96,12 +96,25 @@ review every conflict, use `--strategy abort`.
 ## Install
 
 ```
-cd agentbridge
-npm install
-npm link   # or: node bin/agentbridge.js ...
+npm install -g agentbridge
+```
+
+or run it once without installing:
+
+```
+npx agentbridge list
 ```
 
 Requires `git` and the `opencode` CLI on your `PATH`.
+
+### From source
+
+```
+git clone https://github.com/neerajvipparla/Agentbridge.git
+cd Agentbridge
+npm install
+npm link   # or: node bin/agentbridge.js ...
+```
 
 ## How the conversion works
 

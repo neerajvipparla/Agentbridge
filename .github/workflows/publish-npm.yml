@@ -7,14 +7,23 @@ name: Publish to npm
 # harmless no-op instead of a failed "you cannot publish over an existing
 # version" error.
 #
-# Publishes via npm Trusted Publishing (OIDC) - no NPM_TOKEN secret. A
-# long-lived token that bypasses 2FA still hit an EOTP error on direct
-# publish (npm is phasing that bypass out entirely by ~Jan 2027; see
-# https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/).
-# Trusted Publishing needs npm >=11.5.1 / Node >=22.14.0 (Node 24 below
-# ships npm 11.6.2) and a matching "Trusted Publisher" entry configured
-# on the package's npmjs.com settings page - see the PR this shipped in
-# for the exact values.
+# Publishes with a token (NPM_TOKEN secret) rather than Trusted Publishing
+# (OIDC). Trusted Publishing was tried first and got further - it signs
+# provenance successfully - but the actual publish PUT reliably 404s for
+# scoped packages, a currently open/unresolved upstream npm bug
+# (npm/cli#8976, npm/cli#8678), not a config issue on our end. NPM_TOKEN
+# must be a token created on npmjs.com with "Bypass two-factor
+# authentication" explicitly checked at creation time - a plain token
+# (or one without that box checked) fails publish with EOTP even though
+# it authenticates fine for everything up to that point. That bypass is
+# still allowed for direct publishing until npm's ~Jan 2027 cutoff
+# (https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/);
+# revisit Trusted Publishing once the scoped-package bug above is fixed
+# upstream.
+#
+# --provenance still works with token auth (it only needs id-token:
+# write to sign the attestation - it doesn't require OIDC to be the
+# *auth* mechanism too), so we keep it.
 on:
   push:
     branches:
@@ -25,7 +34,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for both npm provenance and trusted publishing
+  id-token: write # required for npm provenance signing
 
 jobs:
   publish:
@@ -63,3 +72,5 @@ jobs:
       - name: Publish
         if: steps.version-check.outputs.skip != 'true'
         run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

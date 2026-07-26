@@ -9,6 +9,9 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "test": "node tests/opencode-to-claude.test.js && node tests/sync.test.js"
+  },
   "dependencies": {
     "commander": "^12.1.0"
   }

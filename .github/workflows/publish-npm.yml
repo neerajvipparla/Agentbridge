@@ -1,61 +1,71 @@
 name: Publish to npm
 
-# Runs whenever package.json changes on main - i.e. dev is merged into main
-# with a version bump - and also on demand via workflow_dispatch. Skips the
-# publish step (without failing the run) if the current version is already
-# on the registry, so a push to main that doesn't bump the version is a
-# harmless no-op instead of a failed "you cannot publish over an existing
-# version" error.
+# Runs on every push to main. It automatically bumps the patch version,
+# commits the change with [skip ci] to avoid recursion, pushes the commit
+# and tag, then publishes to npm.
 #
-# Publishes with a token (NPM_TOKEN secret) rather than Trusted Publishing
-# (OIDC). Trusted Publishing was tried first and got further - it signs
-# provenance successfully - but the actual publish PUT reliably 404s for
-# scoped packages, a currently open/unresolved upstream npm bug
-# (npm/cli#8976, npm/cli#8678), not a config issue on our end. NPM_TOKEN
-# must be a token created on npmjs.com with "Bypass two-factor
-# authentication" explicitly checked at creation time - a plain token
-# (or one without that box checked) fails publish with EOTP even though
-# it authenticates fine for everything up to that point. That bypass is
-# still allowed for direct publishing until npm's ~Jan 2027 cutoff
-# (https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/);
-# revisit Trusted Publishing once the scoped-package bug above is fixed
-# upstream.
-#
-# --provenance still works with token auth (it only needs id-token:
-# write to sign the attestation - it doesn't require OIDC to be the
-# *auth* mechanism too), so we keep it.
+# Also runs on demand via workflow_dispatch.
 on:
   push:
     branches:
       - main
-    paths:
-      - "package.json"
   workflow_dispatch: {}
 
 permissions:
-  contents: read
-  id-token: write # required for npm provenance signing
+  contents: write
+  id-token: write # required for npm provenance
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Skip if this is an automated version bump
+        id: skip-check
+        run: |
+          MESSAGE=$(git log -1 --pretty=%B)
+          if echo "$MESSAGE" | grep -q '\[skip ci\]'; then
+            echo "Automated version bump detected; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
+        if: steps.skip-check.outputs.skip != 'true'
         run: npm ci
 
       - name: Run tests
+        if: steps.skip-check.outputs.skip != 'true'
         run: npm test
 
+      - name: Configure git
+        if: steps.skip-check.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump patch version
+        if: steps.skip-check.outputs.skip != 'true'
+        run: npm version patch -m "Bump version to %s [skip ci]"
+
+      - name: Push version bump and tag
+        if: steps.skip-check.outputs.skip != 'true'
+        run: git push --follow-tags
+
       - name: Check whether this version is already published
+        if: steps.skip-check.outputs.skip != 'true'
         id: version-check
         run: |
           NAME=$(node -p "require('./package.json').name")
@@ -70,7 +80,7 @@ jobs:
           fi
 
       - name: Publish
-        if: steps.version-check.outputs.skip != 'true'
+        if: steps.skip-check.outputs.skip != 'true' && steps.version-check.outputs.skip != 'true'
         run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

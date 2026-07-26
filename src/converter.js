@@ -73,10 +73,12 @@ function stringifyToolResult(content) {
  * @param {string} [opts.agent] - OpenCode agent name (default "build")
  */
 export function convertToOpenCode(entries, opts) {
-  const { directory, title, providerID = "anthropic", agent = "build" } = opts;
+  const { directory, title, providerID = "anthropic", agent = "build", opencodeSessionId } = opts;
 
   const claudeSessionId = entries.find((e) => e.sessionId)?.sessionId ?? "unknown-session";
-  const sessionId = deriveId("ses", claudeSessionId);
+  // During sync, the caller can override with the existing OpenCode session id
+  // so the new turns are written into the same OpenCode session.
+  const sessionId = opencodeSessionId || deriveId("ses", claudeSessionId);
 
   const timestamps = entries.map((e) => toEpochMs(e.timestamp)).filter(Number.isFinite);
   const created = timestamps.length ? Math.min(...timestamps) : Date.now();

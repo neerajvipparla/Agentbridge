@@ -347,6 +347,21 @@ program
   .option("--agent <agent>", "OpenCode agent name for new Claude turns", "build")
   .action(async (sessionId, opts) => {
     const dir = path.resolve(opts.dir);
+
+    const strategy = opts.strategy;
+    if (strategy !== "timestamp" && strategy !== "abort") {
+      console.error(`Unknown strategy "${strategy}". Use "timestamp" or "abort".`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const interval = Number(opts.interval);
+    if (!Number.isFinite(interval) || interval < 500) {
+      console.error("Interval must be at least 500 ms.");
+      process.exitCode = 1;
+      return;
+    }
+
     const ledgerDir = ledgerPath(dir);
     if (!fs.existsSync(path.join(ledgerDir, ".git"))) {
       console.error(`No ledger found at ${ledgerDir}. Run a fork first.`);
@@ -369,20 +384,6 @@ program
     const claudeFile = path.join(claudeProjectDir, `${claudeId}.jsonl`);
     if (!fs.existsSync(claudeFile)) {
       console.error(`Claude session file not found: ${claudeFile}`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const strategy = opts.strategy;
-    if (strategy !== "timestamp" && strategy !== "abort") {
-      console.error(`Unknown strategy "${strategy}". Use "timestamp" or "abort".`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const interval = Number(opts.interval);
-    if (!Number.isFinite(interval) || interval < 500) {
-      console.error("Interval must be at least 500 ms.");
       process.exitCode = 1;
       return;
     }

@@ -9,7 +9,7 @@ agentbridge list [-s claude|opencode] [--dir <path>] [--all]
 agentbridge show <session-id> [-s claude|opencode] [--dir <path>] [--all]
 agentbridge fork [session-id] [-s claude|opencode] [--dir <path>] [--dry-run]
                  [--title <t>] [--provider <id>] [--agent <name>]
-agentbridge sync [session-id] [--dir <path>] [--strategy timestamp|abort]
+agentbridge sync [session-id] [--dir <path>] [--strategy timestamp|abort|persist-claude|persist-opencode]
                  [--provider <id>] [--agent <name>] [--dry-run]
 agentbridge watch [session-id] [--dir <path>] [--strategy timestamp|abort]
                   [--interval <ms>] [--provider <id>] [--agent <name>]
@@ -117,11 +117,20 @@ agentbridge sync --strategy abort         # refuse if both sides changed
 agentbridge sync --strategy timestamp     # merge by timestamp (default)
 ```
 
-- `timestamp` (default) - append new turns from both sides and sort by time.
-  Turns are append-only and chronological, so this is the right default for
-  a conversation.
+- `timestamp` (default) - each side keeps its own new turns first, then the
+  other side's new turns appended after (not interleaved by real time). If
+  Claude Code gained N+1, N+2 and OpenCode independently gained N+1′, N+2′,
+  N+3′ since the last sync, running `sync` produces, on the Claude side,
+  `[...baseline, N+1, N+2, N+1′, N+2′, N+3′]`, and on the OpenCode side,
+  `[...baseline, N+1′, N+2′, N+3′, N+1, N+2]`.
 - `abort` - stop and report how many new turns each side has, so you resolve
   the conflict manually instead of auto-merging.
+- `persist-claude` / `persist-opencode` - keep only one side's divergent new
+  turns; the other side's are discarded entirely (not appended, not
+  converted). The common baseline before the divergence is preserved on
+  both sides regardless. The discarded turns aren't gone forever - the
+  ledger's pre-sync commit still has them in its git history if you ever
+  need them back.
 
 `sync` records its own ledger commit on a real change, so you can inspect or
 roll back a merge like any other fork. Re-running it with nothing new on

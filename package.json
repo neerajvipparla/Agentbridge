@@ -1,10 +1,10 @@
 {
-  "name": "agentbridge",
+  "name": "@neerajvipparla/agentbridge",
   "version": "0.1.0",
   "description": "Fork Claude Code chat sessions into OpenCode and back, versioned as local git commits. A bidirectional Claude Code <-> OpenCode context bridge.",
   "type": "module",
   "bin": {
-    "agentbridge": "./bin/agentbridge.js"
+    "agentbridge": "bin/agentbridge.js"
   },
   "files": [
     "bin",
@@ -12,6 +12,9 @@
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   },

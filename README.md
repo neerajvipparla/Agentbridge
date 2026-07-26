@@ -96,13 +96,17 @@ review every conflict, use `--strategy abort`.
 ## Install
 
 ```
-npm install -g agentbridge
+npm install -g @neerajvipparla/agentbridge
 ```
 
-or run it once without installing:
+The package is published under a scoped name (npm's automated policy flags
+`agentbridge` as too similar to an existing, unrelated `agent-bridge`
+package) but the command it installs is still plain `agentbridge`.
+
+Or run it once without installing:
 
 ```
-npx agentbridge list
+npx -y @neerajvipparla/agentbridge list
 ```
 
 Requires `git` and the `opencode` CLI on your `PATH`.

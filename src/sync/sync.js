@@ -4,9 +4,12 @@
 //
 // Given a known session pair (Claude id ↔ OpenCode id) recorded in the ledger,
 // this module reads the current state of both tools, compares each to the last
-// synced state stored in the ledger, and merges only the new turns. The default
-// strategy is "timestamp": new turns from both sides are appended and sorted
-// by time. The "abort" strategy refuses when both sides have new turns.
+// synced state stored in the ledger, and merges only the new turns, according
+// to one of four strategies (see STRATEGIES below): "timestamp" (default) -
+// each side's own new turns first, then the other side's, appended - not
+// interleaved by real time; "abort" - refuses when both sides have new turns;
+// "persist-claude" / "persist-opencode" - keep only one side's divergent new
+// turns, discarding the other's entirely (sync-only, not available on watch).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -66,29 +69,46 @@ export function diffSync(current, last) {
 }
 
 /**
- * Merge new turns from both sides into a single chronological sequence.
- * Returns the merged data in both tool-specific forms.
+ * Refuse to merge if both sides have new turns; otherwise merge normally
+ * (there is nothing to abort over when only one side changed).
  *
  * @param {object} current - current state of both sides
  * @param {object} last - last synced state of both sides
- * @param {string} strategy - "timestamp" or "abort"
+ * @param {{claudeNew: object[], opencodeNew: object[]}} diff - from diffSync
  * @param {object} opts - conversion options (directory, etc.)
  * @returns {{claudeEntries: object[], opencodeMessages: object[], claudeNew: object[], opencodeNew: object[]}}
  */
-export function mergeSync(current, last, strategy, opts = {}) {
-  const { claudeNew, opencodeNew } = diffSync(current, last);
+function mergeAbort(current, last, diff, opts) {
+  const { claudeNew, opencodeNew } = diff;
 
-  if (strategy === "abort" && claudeNew.length > 0 && opencodeNew.length > 0) {
+  if (claudeNew.length > 0 && opencodeNew.length > 0) {
     const err = new Error(
       `Both sides have new turns since the last sync.\n` +
         `Claude: ${claudeNew.length} new turns. OpenCode: ${opencodeNew.length} new turns.\n` +
-        `Run with --strategy timestamp to merge by timestamp, or resolve manually.`
+        `Run with --strategy timestamp to keep both sides' turns (grouped by origin), ` +
+        `--strategy persist-claude / persist-opencode to keep only one side and discard the other, ` +
+        `or resolve manually.`
     );
     err.claudeNew = claudeNew;
     err.opencodeNew = opencodeNew;
     throw err;
   }
 
+  // Nothing to abort over - only one side changed (or neither). Merge normally.
+  return mergeTimestamp(current, last, diff, opts);
+}
+
+/**
+ * Merge new turns from both sides into a single sequence per side.
+ *
+ * @param {object} current - current state of both sides
+ * @param {object} last - last synced state of both sides
+ * @param {{claudeNew: object[], opencodeNew: object[]}} diff - from diffSync
+ * @param {object} opts - conversion options (directory, etc.)
+ * @returns {{claudeEntries: object[], opencodeMessages: object[], claudeNew: object[], opencodeNew: object[]}}
+ */
+function mergeTimestamp(current, last, diff, opts) {
+  const { claudeNew, opencodeNew } = diff;
   const cur = normalizeCurrent(current);
   const lst = normalizeCurrent(last);
 
@@ -158,22 +178,11 @@ export function mergeSync(current, last, strategy, opts = {}) {
     }
   }
 
-  // Sort both merged representations by timestamp and recompute parent chains.
-  // Claude: keep assistant + tool-result pairs together.
-  const claudeWithGroups = [];
-  for (let i = 0; i < mergedClaude.length; i++) {
-    const e = mergedClaude[i];
-    const next = mergedClaude[i + 1];
-    if (e.type === "assistant" && next && next.type === "user" && next.parentUuid === e.uuid) {
-      claudeWithGroups.push({ entries: [e, next], ts: toEpochMs(e.timestamp) });
-      i++; // skip the paired result entry
-    } else {
-      claudeWithGroups.push({ entries: [e], ts: toEpochMs(e.timestamp) });
-    }
-  }
-  claudeWithGroups.sort((a, b) => a.ts - b.ts);
-  mergedClaude.length = 0;
-  for (const g of claudeWithGroups) mergedClaude.push(...g.entries);
+  // No sort here, deliberately: mergedClaude/mergedOpenCode are already in
+  // the wanted order (baseline, then this side's own new turns, then the
+  // other side's new turns converted in) from the construction above.
+  // Grouping by origin instead of interleaving by real timestamp is the
+  // contract `timestamp` promises - see the design doc.
 
   let prevUuid = null;
   for (const e of mergedClaude) {
@@ -181,8 +190,6 @@ export function mergeSync(current, last, strategy, opts = {}) {
     prevUuid = e.uuid;
   }
 
-  // OpenCode: sort by message creation time.
-  mergedOpenCode.sort((a, b) => (a.info?.time?.created || 0) - (b.info?.time?.created || 0));
   let prevOpenCodeId = null;
   for (const m of mergedOpenCode) {
     m.info.parentID = prevOpenCodeId || m.info.sessionID;
@@ -190,6 +197,134 @@ export function mergeSync(current, last, strategy, opts = {}) {
   }
 
   return { claudeEntries: mergedClaude, opencodeMessages: mergedOpenCode, claudeNew, opencodeNew };
+}
+
+/**
+ * Keep only Claude's divergent new turns; OpenCode's are discarded entirely
+ * (not appended, not converted). The common baseline is preserved on both
+ * sides. opencodeNew is still returned (unused in the merge) so the CLI can
+ * report how many turns were discarded.
+ */
+function mergePersistClaude(current, last, diff, opts) {
+  const { claudeNew, opencodeNew } = diff;
+  const lst = normalizeCurrent(last);
+
+  const mergedClaude = [...lst.claude];
+  const existingClaudeKeys = new Set(mergedClaude.map(claudeTurnKey));
+  for (const e of claudeNew) {
+    const k = claudeTurnKey(e);
+    if (!existingClaudeKeys.has(k)) {
+      mergedClaude.push(e);
+      existingClaudeKeys.add(k);
+    }
+  }
+
+  const mergedOpenCode = [...lst.opencode];
+  if (claudeNew.length > 0) {
+    const existingOpenCodeKeys = new Set(mergedOpenCode.map(opencodeTurnKey));
+    const opencodeSessionId = lst.opencode[0]?.info?.sessionID || opts.opencodeId;
+    const newOpenCodeMessages = convertToOpenCode(claudeNew, {
+      directory: opts.directory,
+      title: opts.title ?? "Synced session",
+      providerID: opts.providerID,
+      agent: opts.agent,
+      opencodeSessionId,
+    }).messages;
+    for (const m of newOpenCodeMessages) {
+      const k = opencodeTurnKey(m);
+      if (!existingOpenCodeKeys.has(k)) {
+        mergedOpenCode.push(m);
+        existingOpenCodeKeys.add(k);
+      }
+    }
+  }
+
+  let prevUuid = null;
+  for (const e of mergedClaude) {
+    e.parentUuid = prevUuid;
+    prevUuid = e.uuid;
+  }
+  let prevOpenCodeId = null;
+  for (const m of mergedOpenCode) {
+    m.info.parentID = prevOpenCodeId || m.info.sessionID;
+    prevOpenCodeId = m.info.id;
+  }
+
+  return { claudeEntries: mergedClaude, opencodeMessages: mergedOpenCode, claudeNew, opencodeNew };
+}
+
+/**
+ * Mirror of mergePersistClaude: keep only OpenCode's divergent new turns,
+ * discard Claude's entirely.
+ */
+function mergePersistOpencode(current, last, diff, opts) {
+  const { claudeNew, opencodeNew } = diff;
+  const lst = normalizeCurrent(last);
+
+  const mergedOpenCode = [...lst.opencode];
+  const existingOpenCodeKeys = new Set(mergedOpenCode.map(opencodeTurnKey));
+  for (const m of opencodeNew) {
+    const k = opencodeTurnKey(m);
+    if (!existingOpenCodeKeys.has(k)) {
+      mergedOpenCode.push(m);
+      existingOpenCodeKeys.add(k);
+    }
+  }
+
+  const mergedClaude = [...lst.claude];
+  if (opencodeNew.length > 0) {
+    const existingClaudeKeys = new Set(mergedClaude.map(claudeTurnKey));
+    const claudeSessionId = lst.claude[0]?.sessionId || opts.claudeSessionId;
+    const newClaudeEntries = convertToClaude(
+      { info: { id: opts.opencodeId || "placeholder", directory: opts.directory }, messages: opencodeNew },
+      { directory: opts.directory, sessionId: claudeSessionId }
+    );
+    for (const e of newClaudeEntries) {
+      const k = claudeTurnKey(e);
+      if (!existingClaudeKeys.has(k)) {
+        mergedClaude.push(e);
+        existingClaudeKeys.add(k);
+      }
+    }
+  }
+
+  let prevUuid = null;
+  for (const e of mergedClaude) {
+    e.parentUuid = prevUuid;
+    prevUuid = e.uuid;
+  }
+  let prevOpenCodeId = null;
+  for (const m of mergedOpenCode) {
+    m.info.parentID = prevOpenCodeId || m.info.sessionID;
+    prevOpenCodeId = m.info.id;
+  }
+
+  return { claudeEntries: mergedClaude, opencodeMessages: mergedOpenCode, claudeNew, opencodeNew };
+}
+
+const STRATEGIES = {
+  timestamp: mergeTimestamp,
+  abort: mergeAbort,
+  "persist-claude": mergePersistClaude,
+  "persist-opencode": mergePersistOpencode,
+};
+
+/**
+ * Merge new turns from both sides according to the given strategy.
+ *
+ * @param {object} current - current state of both sides
+ * @param {object} last - last synced state of both sides
+ * @param {string} strategy - one of the keys of STRATEGIES
+ * @param {object} opts - conversion options (directory, etc.)
+ * @returns {{claudeEntries: object[], opencodeMessages: object[], claudeNew: object[], opencodeNew: object[]}}
+ */
+export function mergeSync(current, last, strategy, opts = {}) {
+  const diff = diffSync(current, last);
+  const fn = STRATEGIES[strategy];
+  if (!fn) {
+    throw new Error(`Unknown strategy "${strategy}". Use one of: ${Object.keys(STRATEGIES).join(", ")}.`);
+  }
+  return fn(current, last, diff, opts);
 }
 
 /**
@@ -246,8 +381,12 @@ export function syncSession({ ledgerDir, dir, claudeId, opencodeId, strategy, dr
     };
   }
 
-  if (strategy !== "timestamp" && strategy !== "abort") {
-    return { ok: false, error: `Unknown strategy "${strategy}". Use "timestamp" or "abort".`, exitCode: 1 };
+  if (!(strategy in STRATEGIES)) {
+    return {
+      ok: false,
+      error: `Unknown strategy "${strategy}". Use one of: ${Object.keys(STRATEGIES).join(", ")}.`,
+      exitCode: 1,
+    };
   }
 
   let merged;

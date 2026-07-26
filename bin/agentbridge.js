@@ -290,7 +290,11 @@ program
   .description("Reconcile a conversation that has been edited in both tools")
   .argument("[session-id]", "Claude or OpenCode session id (defaults to the most recently forked session in the ledger)")
   .option("-d, --dir <path>", "project directory (defaults to cwd)", process.cwd())
-  .option("-s, --strategy <strategy>", 'merge strategy: "timestamp" (default) or "abort"', "timestamp")
+  .option(
+    "-s, --strategy <strategy>",
+    'merge strategy: "timestamp" (default), "abort", "persist-claude", or "persist-opencode"',
+    "timestamp"
+  )
   .option("--provider <providerID>", "OpenCode provider id for new Claude turns", "anthropic")
   .option("--agent <agent>", "OpenCode agent name for new Claude turns", "build")
   .option("--dry-run", "compute the merge but skip writing files or importing", false)
@@ -325,7 +329,13 @@ program
     });
 
     if (result.claudeNew !== undefined && result.opencodeNew !== undefined && (result.claudeNew > 0 || result.opencodeNew > 0)) {
-      console.log(`Syncing ${result.claudeNew} new Claude turns and ${result.opencodeNew} new OpenCode turns.`);
+      if (opts.strategy === "persist-claude") {
+        console.log(`Keeping ${result.claudeNew} new Claude turns; discarding ${result.opencodeNew} new OpenCode turns.`);
+      } else if (opts.strategy === "persist-opencode") {
+        console.log(`Keeping ${result.opencodeNew} new OpenCode turns; discarding ${result.claudeNew} new Claude turns.`);
+      } else {
+        console.log(`Syncing ${result.claudeNew} new Claude turns and ${result.opencodeNew} new OpenCode turns.`);
+      }
     }
     if (result.message) console.log(result.message);
     if (result.error) console.error(result.error);
@@ -343,6 +353,21 @@ program
   .option("--agent <agent>", "OpenCode agent name for new Claude turns", "build")
   .action(async (sessionId, opts) => {
     const dir = path.resolve(opts.dir);
+
+    const strategy = opts.strategy;
+    if (strategy !== "timestamp" && strategy !== "abort") {
+      console.error(`Unknown strategy "${strategy}". Use "timestamp" or "abort".`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const interval = Number(opts.interval);
+    if (!Number.isFinite(interval) || interval < 500) {
+      console.error("Interval must be at least 500 ms.");
+      process.exitCode = 1;
+      return;
+    }
+
     const ledgerDir = ledgerPath(dir);
     if (!fs.existsSync(path.join(ledgerDir, ".git"))) {
       console.error(`No ledger found at ${ledgerDir}. Run a fork first.`);
@@ -365,20 +390,6 @@ program
     const claudeFile = path.join(claudeProjectDir, `${claudeId}.jsonl`);
     if (!fs.existsSync(claudeFile)) {
       console.error(`Claude session file not found: ${claudeFile}`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const strategy = opts.strategy;
-    if (strategy !== "timestamp" && strategy !== "abort") {
-      console.error(`Unknown strategy "${strategy}". Use "timestamp" or "abort".`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const interval = Number(opts.interval);
-    if (!Number.isFinite(interval) || interval < 500) {
-      console.error("Interval must be at least 500 ms.");
       process.exitCode = 1;
       return;
     }

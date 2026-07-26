@@ -12,6 +12,7 @@ The working conventions for this repo live in `agents/skills/`. **Read the match
 | add a module, refactor, or reach for an abstraction or design pattern | `agents/skills/writing-quality-code/SKILL.md` |
 | start a feature, or commit while on `main` or `dev` | `agents/skills/shipping-via-pull-requests/SKILL.md` |
 | change a flag, output shape, invariant, or documented limitation | `agents/skills/writing-documentation/SKILL.md` |
+| create or edit any part of `README.md` | `agents/skills/writing-readme/SKILL.md` |
 
 If more than one row applies, read all of them. Do not infer a file's contents from its name or from this table — each states specific rules and rules out specific shortcuts, and the table is only an index. They are binding: `writing-tests-first` and `shipping-via-pull-requests` state hard rules (no code before a failing test; no direct commits to `main` or `dev`), and the invariants in Architecture below depend on them being followed.
 

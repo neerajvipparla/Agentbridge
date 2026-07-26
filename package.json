@@ -1,6 +1,6 @@
 {
   "name": "@neerajvipparla/agentbridge",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fork Claude Code chat sessions into OpenCode and back, versioned as local git commits. A bidirectional Claude Code <-> OpenCode context bridge.",
   "type": "module",
   "bin": {

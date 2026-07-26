@@ -1,4 +1,4 @@
-// src/watch.js
+// src/sync/watch.js
 //
 // Phase 2 stretch goal: near-real-time auto-sync for a session pair.
 //
@@ -9,7 +9,7 @@
 
 import fs from "node:fs";
 import { syncSession } from "./sync.js";
-import { exportSession } from "./opencode-reader.js";
+import { exportSession } from "../readers/opencode-reader.js";
 
 function hashOpenCode(s) {
   if (!s || !s.messages) return "";

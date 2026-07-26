@@ -1,6 +1,6 @@
-// src/converter.js
+// src/converters/claude-to-opencode.js
 //
-// Converts a Claude Code conversation (see claude-reader.js) into the JSON
+// Converts a Claude Code conversation (see readers/claude-reader.js) into the JSON
 // shape that `opencode import` accepts:
 //
 //   {

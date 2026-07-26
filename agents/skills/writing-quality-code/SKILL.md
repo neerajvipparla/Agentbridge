@@ -60,6 +60,6 @@ Do not write: restatements of the signature, a comment per line, commented-out c
 
 - Every new branch in the logic is reachable from a test (see `writing-tests-first`)
 - No new import points leftward in the pipeline
-- No `Date.now()`, `Math.random()`, or `randomUUID` in `src/converter.js`
+- No `Date.now()`, `Math.random()`, or `randomUUID` in `src/converters/claude-to-opencode.js`
 - Every abstraction added has a second concrete caller *today*
 - Every non-obvious line either reads obviously or carries a comment saying what breaks

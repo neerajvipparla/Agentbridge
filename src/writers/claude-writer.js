@@ -1,11 +1,11 @@
-// src/claude-writer.js
+// src/writers/claude-writer.js
 //
 // Writes a Claude Code JSONL transcript to the location Claude Code expects:
 //   ~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl
 
 import fs from "node:fs";
 import path from "node:path";
-import { claudeProjectsDir, encodeProjectPath } from "./claude-reader.js";
+import { claudeProjectsDir, encodeProjectPath } from "../readers/claude-reader.js";
 
 /**
  * Write an array of Claude Code entries as a JSONL session file.

@@ -1,8 +1,8 @@
 import assert from "node:assert";
-import { convertToClaude } from "../src/opencode-to-claude.js";
-import { writeClaudeSession } from "../src/claude-writer.js";
-import { parseSessionFile, toConversation, summarizeSession } from "../src/claude-reader.js";
-import { convertToOpenCode } from "../src/converter.js";
+import { convertToClaude } from "../src/converters/opencode-to-claude.js";
+import { writeClaudeSession } from "../src/writers/claude-writer.js";
+import { parseSessionFile, toConversation, summarizeSession } from "../src/readers/claude-reader.js";
+import { convertToOpenCode } from "../src/converters/claude-to-opencode.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

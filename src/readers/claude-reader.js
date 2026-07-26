@@ -1,4 +1,4 @@
-// src/claude-reader.js
+// src/readers/claude-reader.js
 //
 // Reads Claude Code's local session storage.
 //

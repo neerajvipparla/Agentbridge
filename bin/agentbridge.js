@@ -15,7 +15,7 @@ import {
   renderTranscript as renderClaudeTranscript,
   claudeProjectsDir,
   encodeProjectPath,
-} from "../src/claude-reader.js";
+} from "../src/readers/claude-reader.js";
 import {
   findLatestSession as findLatestOpenCodeSession,
   findSessionById as findOpenCodeSessionById,
@@ -23,14 +23,14 @@ import {
   listSessionsForDir as listOpenCodeSessionsForDir,
   summarizeSession as summarizeOpenCodeSession,
   renderTranscript as renderOpenCodeTranscript,
-} from "../src/opencode-reader.js";
-import { convertToOpenCode } from "../src/converter.js";
-import { convertToClaude } from "../src/opencode-to-claude.js";
-import { importIntoOpenCode } from "../src/opencode-import.js";
-import { writeClaudeSession } from "../src/claude-writer.js";
-import { ledgerPath, commitFork, log as ledgerLog } from "../src/git-ledger.js";
-import { syncSession, resolveSessionPair } from "../src/sync.js";
-import { watchSession, waitForInterrupt } from "../src/watch.js";
+} from "../src/readers/opencode-reader.js";
+import { convertToOpenCode } from "../src/converters/claude-to-opencode.js";
+import { convertToClaude } from "../src/converters/opencode-to-claude.js";
+import { importIntoOpenCode } from "../src/writers/opencode-import.js";
+import { writeClaudeSession } from "../src/writers/claude-writer.js";
+import { ledgerPath, commitFork, log as ledgerLog } from "../src/ledger/git-ledger.js";
+import { syncSession, resolveSessionPair } from "../src/sync/sync.js";
+import { watchSession, waitForInterrupt } from "../src/sync/watch.js";
 
 const program = new Command();
 

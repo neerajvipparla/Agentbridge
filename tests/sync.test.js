@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { diffSync, mergeSync } from "../src/sync.js";
+import { diffSync, mergeSync } from "../src/sync/sync.js";
 
 function ocMsg(role, id, created, text, parentID = null) {
   return {

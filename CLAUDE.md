@@ -10,10 +10,14 @@ The working conventions for this repo live in `agents/skills/`. **Read the match
 |---|---|
 | write or change any function, or fix a bug | `agents/skills/writing-tests-first/SKILL.md` |
 | add a module, refactor, or reach for an abstraction or design pattern | `agents/skills/writing-quality-code/SKILL.md` |
-| start a feature, or commit while on `main` | `agents/skills/shipping-via-pull-requests/SKILL.md` |
+| start a feature, or commit while on `main` or `dev` | `agents/skills/shipping-via-pull-requests/SKILL.md` |
 | change a flag, output shape, invariant, or documented limitation | `agents/skills/writing-documentation/SKILL.md` |
+| create or edit any part of `README.md` | `agents/skills/writing-readme/SKILL.md` |
+| create a GitHub issue for a bug, feature, improvement, or small fix | `agents/skills/writing-github-issues/SKILL.md` |
 
-If more than one row applies, read all of them. Do not infer a file's contents from its name or from this table — each states specific rules and rules out specific shortcuts, and the table is only an index. They are binding: `writing-tests-first` and `shipping-via-pull-requests` state hard rules (no code before a failing test; no direct commits to `main`), and the invariants in Architecture below depend on them being followed.
+If more than one row applies, read all of them. Do not infer a file's contents from its name or from this table — each states specific rules and rules out specific shortcuts, and the table is only an index. They are binding: `writing-tests-first` and `shipping-via-pull-requests` state hard rules (no code before a failing test; no direct commits to `main` or `dev`), and the invariants in Architecture below depend on them being followed.
+
+**Branches:** this repo has two long-lived branches. `dev` is where ordinary work happens; `main` is what `.github/workflows/publish-npm.yml` actually runs from and what gets released to npm. **PRs target `dev` by default. A change entirely under `.github/workflows/` (CI/CD) targets `main` directly instead.** See `agents/skills/shipping-via-pull-requests/SKILL.md` for the exact branch/PR mechanics.
 
 ## Commands
 

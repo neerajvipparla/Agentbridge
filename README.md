@@ -1,97 +1,25 @@
 # agentbridge
 
-Phase 1 of a Claude Code ⇄ OpenCode context bridge: fork a chat session from
-one agent into the other, and record every fork as a commit in a local git
-ledger.
+A bidirectional Claude Code ⇄ OpenCode context bridge: fork a chat session
+from one tool into the other, keep both sides in sync as the conversation
+continues, and record every fork or sync as a commit in a local git ledger.
 
 ```
 agentbridge list [-s claude|opencode] [--dir <path>] [--all]
-agentbridge show <session-id> [-s claude|opencode] [--dir <path>]
+agentbridge show <session-id> [-s claude|opencode] [--dir <path>] [--all]
 agentbridge fork [session-id] [-s claude|opencode] [--dir <path>] [--dry-run]
                  [--title <t>] [--provider <id>] [--agent <name>]
-agentbridge sync [session-id] [--dir <path>] [--strategy timestamp|abort]
-agentbridge watch [session-id] [--dir <path>] [--strategy timestamp|abort] [--interval <ms>]
-agentbridge log  [--dir <path>] [--limit <n>]
+agentbridge sync [session-id] [--dir <path>] [--dry-run]
+                 [--strategy timestamp|abort|persist-claude|persist-opencode]
+                 [--provider <id>] [--agent <name>]
+agentbridge watch [session-id] [--dir <path>] [--strategy timestamp|abort]
+                  [--interval <ms>] [--provider <id>] [--agent <name>]
+agentbridge log [--dir <path>] [--limit <n>]
 ```
 
-Typical flow:
-
-- `agentbridge list` (or `list -s opencode`) to see what's available.
-- `agentbridge show <id>` to read the full transcript.
-- `agentbridge fork <id>` to clone the session into the *other* tool.
-
-`--source` / `-s` selects the source tool:
-
-| Command | Default source | `-s opencode` |
-|---|---|---|
-| `list` | Claude Code sessions | OpenCode sessions |
-| `show` | auto-detect by id | OpenCode session |
-| `fork` | auto-detect by id (or latest Claude) | OpenCode → Claude Code |
-
-Auto-detection: ids starting with `ses_` are OpenCode; everything else is
-treated as a Claude Code session id.
-
-Run `agentbridge fork` with no arguments inside a project you've used `claude`
-in, and it will find the most recent Claude Code session, convert it into
-OpenCode's format, commit both representations to `.agentbridge/ledger/`, and
-run `opencode import` so the conversation shows up in OpenCode.
-
-Run `agentbridge fork <ses_...> -s opencode` to go the other way: it exports
-the OpenCode session, converts it back to a Claude Code JSONL transcript, and
-writes it to `~/.claude/projects/<encoded-dir>/<uuid>.jsonl` so `claude` can
-resume it.
-
-Re-running `fork` on an unchanged session is a no-op (same target id, no new
-ledger commit). If the source session has grown since the last fork, it
-updates the target in place and records a new commit containing only the diff.
-
-`--dry-run` converts and writes the ledger commit, but skips the final
-`opencode import` / Claude file write.
-
-## Bidirectional sync (`sync`)
-
-`agentbridge sync [session-id]` reconciles a conversation that has been edited
-in both tools since the last fork/sync.
-
-- It reads the current Claude transcript and the current OpenCode session.
-- It compares both to the last synced state stored in `.agentbridge/ledger/`.
-- It merges only the *new* turns into both tools.
-
-```bash
-agentbridge sync                          # latest session in the ledger
-agentbridge sync <claude-uuid>            # by Claude session id
-agentbridge sync <ses_...>                # by OpenCode session id
-agentbridge sync --strategy abort         # refuse if both sides changed
-agentbridge sync --strategy timestamp     # merge by timestamp (default)
-```
-
-Conflict strategies:
-
-- `timestamp` (default) — append new turns from both sides and sort by time.
-  This is the recommended default for conversations because turns are
-  append-only and chronological order is usually the right merge.
-- `abort` — stop and show how many new turns each side has, so you can resolve
-  manually. Use this when you want full control over the merge.
-
-`sync` also records a ledger commit, so you can roll back or inspect the diff.
-
-## Live sync (`watch`)
-
-`agentbridge watch [session-id]` monitors the Claude session file and polls
-OpenCode, automatically syncing when either side changes.
-
-```bash
-agentbridge watch                     # latest session in the ledger
-agentbridge watch <ses_...>           # watch a specific OpenCode session
-agentbridge watch --interval 1000     # poll OpenCode every 1 second
-agentbridge watch --strategy abort    # stop and warn on conflicts
-```
-
-Press **Ctrl-C** to stop. The default poll interval is 5 seconds.
-
-**Safety note:** `watch` uses the same merge strategy as `sync`. With the default
-`timestamp` strategy it will auto-merge both sides' new turns. If you prefer to
-review every conflict, use `--strategy abort`.
+Run `agentbridge <command> --help` for the exhaustive flag list with
+defaults - the block above is the shape of the surface, not a full
+reference.
 
 ## Install
 
@@ -120,38 +48,161 @@ npm install
 npm link   # or: node bin/agentbridge.js ...
 ```
 
-## How the conversion works
+## Usage
+
+Typical flow: `list` to see what's available, `show` to read a transcript
+you're unsure about, `fork` once you've picked one.
+
+```
+$ agentbridge list
+ad245505-24b0-478b-9126-b3dcdf79852f
+  7/26/2026, 4:34:18 PM  ·  805 messages
+  "<command-message>init</command-message>"
+
+Preview one in full with:  agentbridge show <session-id>
+Fork one to OpenCode with: agentbridge fork <session-id>
+```
+
+`--source` / `-s` picks which tool a command reads from or converts between:
+
+| Command | Default source | `-s opencode` |
+|---|---|---|
+| `list` | Claude Code sessions | OpenCode sessions |
+| `show` | auto-detect by id | OpenCode session |
+| `fork` | auto-detect by id (or latest Claude session) | OpenCode → Claude Code |
+
+Auto-detection: ids starting with `ses_` are treated as OpenCode; everything
+else is treated as a Claude Code session id.
+
+### Forking Claude Code → OpenCode
+
+```
+$ agentbridge fork b9a600da-9bf0-4d52-a70b-ff66bade638b --dry-run
+Ledger commit bb0ee7d608 recorded at .../.agentbridge/ledger
+Dry run: skipped `opencode import`. Converted OpenCode session id: ses_d51119061f313e2d7f905e57
+```
+
+Run it without `--dry-run` inside (or with `--dir` pointing at) a project
+you've used `claude` in, and it will find the most recent Claude Code
+session, convert it into OpenCode's format, commit both representations to
+`.agentbridge/ledger/`, and run `opencode import` so the conversation shows
+up in OpenCode, ready to resume with `opencode --session <id>`.
+
+### Forking OpenCode → Claude Code
+
+```
+agentbridge fork <ses_...> -s opencode
+```
+
+Exports the OpenCode session, converts it back to a Claude Code JSONL
+transcript, and writes it to `~/.claude/projects/<encoded-dir>/<uuid>.jsonl`
+so `claude` can resume it.
+
+Re-running `fork` on an unchanged session is a no-op (same target id, no new
+ledger commit, and `--dry-run` reports "No changes since last fork"). If the
+source session has grown since the last fork, it updates the target in
+place and records a new commit containing only the diff.
+
+### Keeping both sides in sync
+
+`agentbridge sync [session-id]` reconciles a conversation that's been edited
+in both tools since the last fork or sync - it reads the current state of
+both, compares each to the last synced state recorded in the ledger, and
+merges only the genuinely new turns.
+
+```bash
+agentbridge sync                          # latest session pair in the ledger
+agentbridge sync <claude-uuid>            # by Claude session id
+agentbridge sync <ses_...>                # by OpenCode session id
+agentbridge sync --strategy abort         # refuse if both sides changed
+agentbridge sync --strategy timestamp     # group by origin (default)
+```
+
+- `timestamp` (default) - each side keeps its own new turns first, then the
+  other side's new turns appended after (not interleaved by real time). If
+  Claude Code gained N+1, N+2 and OpenCode independently gained N+1′, N+2′,
+  N+3′ since the last sync, running `sync` produces, on the Claude side,
+  `[...baseline, N+1, N+2, N+1′, N+2′, N+3′]`, and on the OpenCode side,
+  `[...baseline, N+1′, N+2′, N+3′, N+1, N+2]`.
+- `abort` - stop and report how many new turns each side has, so you resolve
+  the conflict manually instead of auto-merging.
+- `persist-claude` / `persist-opencode` - keep only one side's divergent new
+  turns; the other side's are discarded entirely (not appended, not
+  converted). The common baseline before the divergence is preserved on
+  both sides regardless. **This is destructive and not recoverable**: the
+  discarded turns are exactly the turns created since the last sync, so
+  they were never in any ledger commit - the live Claude JSONL is fully
+  overwritten with the new merged state, and the discarded side's turns
+  are gone from disk. Run with `--dry-run` first if you're not sure which
+  side you want to keep.
+
+`sync` records its own ledger commit on a real change, so you can inspect or
+roll back a merge like any other fork. Re-running it with nothing new on
+either side is a no-op, same as `fork`.
+
+`agentbridge watch [session-id]` does the same thing continuously: it
+monitors the Claude session file for changes and polls OpenCode's state,
+auto-syncing whenever either side changes.
+
+```bash
+agentbridge watch                     # latest session pair in the ledger
+agentbridge watch <ses_...>           # watch a specific OpenCode session
+agentbridge watch --interval 1000     # poll OpenCode every 1 second
+agentbridge watch --strategy abort    # stop and warn on conflicts instead
+```
+
+Press **Ctrl-C** to stop. The default poll interval is 5 seconds.
+`watch` accepts the same `timestamp`/`abort` strategies as `sync` - with the
+default `timestamp` strategy it auto-merges both sides' new turns on every
+poll, so use `--strategy abort` if you'd rather review every conflict by
+hand. `persist-claude`/`persist-opencode` are **not** available on `watch` -
+they're a deliberate, one-shot `sync` action, not something left running
+unattended that repeatedly discards a side's turns.
+
+### Reviewing what's been forked
+
+```
+agentbridge log [--limit <n>]
+```
+
+Prints the commit history of the local git ledger for the current project -
+one line per fork or sync, newest first.
+
+## How it works
 
 Claude Code stores one JSONL file per session at
 `~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl`, where `<encoded-cwd>`
 is the absolute working directory with **every non-alphanumeric character**
 replaced by `-` (e.g. `/Users/me/.config/my_app` →
-`-Users-me--config-my-app`), not just the path separators.
-Each line is an entry with a `type` (`user`/`assistant`/...), a `message`
-object whose `content` is either a string or an array of blocks (`text`,
-`thinking`, `tool_use`, `tool_result`), and Claude's own `uuid`/`parentUuid`
-chain. `src/readers/claude-reader.js` finds and parses these files; `toConversation()`
+`-Users-me--config-my-app`), not just the path separators. Each line is an
+entry with a `type` (`user`/`assistant`/...), a `message` object whose
+`content` is either a string or an array of blocks (`text`, `thinking`,
+`tool_use`, `tool_result`), and Claude's own `uuid`/`parentUuid` chain.
+`src/readers/claude-reader.js` finds and parses these files; `toConversation()`
 filters out subagent ("sidechain") and internal ("meta") entries so you get
-the same linear conversation you'd see in the Claude Code TUI.
+the same linear conversation you'd see in the Claude Code TUI. OpenCode
+sessions are read via the `opencode` CLI (`session list --format json` and
+`export <id>`) rather than its internal SQLite format directly, since that
+format has changed before and the CLI is the stable surface - `export` falls
+back to reading OpenCode's SQLite database directly (via `node:sqlite`,
+which needs **Node.js 22.5+**) only when the CLI's own export is incomplete,
+e.g. while the OpenCode server is running.
 
-`src/converters/claude-to-opencode.js` turns Claude Code into OpenCode's import/export
-JSON shape; `src/converters/opencode-to-claude.js` runs the reverse direction. Both are built on the
-same import/export JSON contract that was reverse-engineered from
-`opencode@1.18.5` by round-tripping synthetic sessions through
-`opencode import ...` / `opencode export ...` and reading OpenCode's generated
-SDK types in `@opencode-ai/sdk/dist/gen/types.gen.d.ts`.
+`src/converters/claude-to-opencode.js` converts Claude Code into OpenCode's
+import/export JSON shape; `src/converters/opencode-to-claude.js` runs the
+reverse direction. Both are built on the same import/export JSON contract,
+reverse-engineered from `opencode@1.18.5` by round-tripping synthetic
+sessions through `opencode import ...` / `opencode export ...` and reading
+OpenCode's generated SDK types in `@opencode-ai/sdk/dist/gen/types.gen.d.ts`.
 
-Forward (`converter.js`) mapping:
-
-```
-Claude JSONL  →  OpenCode { info, messages:[{info, parts}] }
-```
+Forward (`claude-to-opencode.js`) mapping:
 
 - Claude's `text` / `thinking` blocks → OpenCode `text` / `reasoning` parts.
 - Claude's `tool_use` blocks → OpenCode `tool` parts. The matching
   `tool_result` (or the raw `toolUseResult` field on the following entry) is
-  folded into the tool part's `state` instead of being rendered as a separate
-  message. If no result is found, the part is marked `status: "pending"`.
+  folded into the tool part's `state` instead of being rendered as a
+  separate message. If no result is found, the part is marked `status:
+  "pending"`.
 - Claude's synthetic "here's your tool result" user turn is *not* emitted as
   its own OpenCode message (it would show up as an empty bubble); its content
   is already captured in the tool part above.
@@ -160,10 +211,6 @@ Claude JSONL  →  OpenCode { info, messages:[{info, parts}] }
 
 Reverse (`opencode-to-claude.js`) mapping:
 
-```
-OpenCode { info, messages:[{info, parts}] }  →  Claude JSONL
-```
-
 - OpenCode `text` / `reasoning` parts → Claude `text` / `thinking` blocks.
 - OpenCode `tool` parts are expanded back into the two-entry structure Claude
   Code uses: an assistant entry containing a `tool_use` block, followed by a
@@ -171,13 +218,34 @@ OpenCode { info, messages:[{info, parts}] }  →  Claude JSONL
   `toolUseResult` fallback.
 - A **fresh, deterministic Claude session UUID** is generated from the
   OpenCode session id rather than reusing the `ses_...` id (the formats are
-  intentionally different). Re-importing the same OpenCode session produces
-  the same Claude id, so reverse-forking is also idempotent.
+  intentionally different).
 
-In both directions, IDs and timestamps are **derived deterministically** from
-the source tool's own ids/timestamps (sha256-based), not random. This is what
-makes re-forking idempotent. Override `--provider` / `--agent` on forward
-forks if your OpenCode config names them differently.
+**IDs are always deterministic** in both directions - sha256 over the source
+tool's own ids, never `crypto.randomUUID()` - which is what makes re-forking
+idempotent: importing the same session twice produces the same target id
+and (for `fork`) byte-identical output, so the ledger records nothing on the
+second run instead of a duplicate. **Timestamps** are derived from the
+source's own recorded times where available; the one exception is a Claude
+entry converted from an OpenCode message that has no `time.completed` or
+`time.created` at all, which falls back to the current wall clock for that
+entry's cosmetic timestamp field only - the entry and session *ids* stay
+deterministic regardless. `sync` additionally stamps the OpenCode session's
+`time.updated` with the real current time on every real merge (a sync
+legitimately happens "now"), but a `sync` or `watch` cycle with nothing new
+on either side still returns before writing anything, so it stays a true
+no-op like `fork`.
+
+The ledger (`.agentbridge/ledger/` inside the target project) is its own
+nested git repo, not your project's own repo - `.agentbridge/` is
+`.gitignore`d for you. Each fork or sync writes `claude/<id>.jsonl` and
+`opencode/<id>.json` (raw or converted, depending on direction) plus a
+`mapping.json` recording every known Claude-id ↔ OpenCode-id pair, which is
+how `sync`/`watch`/`log` resolve either id back to its counterpart and to
+the last-synced baseline.
+
+Override `--provider` / `--agent` on `fork`/`sync`/`watch` if your OpenCode
+config names its provider or agent differently than the defaults
+(`anthropic` / `build`).
 
 ## Known limitations
 
@@ -186,35 +254,25 @@ forks if your OpenCode config names them differently.
   `tool_use_id`. This is correct for the common one-tool-per-turn case;
   heavily parallel tool use could mis-pair in rare cases.
 - File attachments, permission prompts, Claude Code slash commands, and
-  OpenCode-specific part types besides `text` / `reasoning` / `tool` aren't
-  converted yet.
+  OpenCode part types besides `text` / `reasoning` / `tool` aren't converted.
 - One session at a time; no batch mode.
-- `sync` merges by timestamp; it does not yet de-duplicate semantically
-  identical turns added independently on both sides.
-- OpenCode's `export` command can be lossy while the OpenCode server is running
-  or when a session was imported and then continued. `agentbridge` now reads
-  OpenCode's SQLite database directly as a fallback, and `sync` rebuilds the
-  merged state from the ledger baseline so history is not silently dropped.
-  However, uncommitted/in-progress turns that OpenCode has not yet flushed to
-  disk cannot be synced until OpenCode persists them.
+- `sync`'s strategies do not de-duplicate semantically identical turns added
+  independently on both sides - only exact-match turns (by id, or content
+  hash when no id is available) are recognized as "the same" turn.
+- The OpenCode SQLite fallback in `src/readers/opencode-reader.js` needs
+  Node.js 22.5+ (`node:sqlite`). On older Node it silently falls back to the
+  `opencode` CLI's own `export`, which can itself be incomplete while the
+  OpenCode server is running or after an imported session has been
+  continued.
 
-## Phase 2: bidirectional sync (implemented)
+## Contributing
 
-The `agentbridge sync` command implements steps 1-3:
+PRs welcome. This repo uses two long-lived branches - `dev` for ordinary
+work, `main` for what's released to npm - and PRs target `dev` by default
+(CI/CD-only changes target `main` directly). See `CLAUDE.md` and
+`agents/skills/` for the full development conventions (tests, code style,
+PR shape, documentation) before opening one.
 
-1. **Both directions get a converter.** Done: `converter.js` (Claude → OpenCode)
-   and `opencode-to-claude.js` (OpenCode → Claude). Both write through the
-   same ledger.
-2. **The ledger is the source of truth for "what did we last sync".**
-   `sync` reads the last ledger commit for the session pair, diffs it against
-   the current state of both tools, and only merges the new turns. The merged
-   state is always rebuilt from the ledger baseline so a partial OpenCode export
-   (e.g. while the server is running) cannot erase history.
-3. **Conflict handling:** `timestamp` (default) appends both sides' new turns
-   in chronological order; `abort` refuses and reports the conflict so you
-   can resolve manually.
-4. **Live sync:** `agentbridge watch` monitors the Claude JSONL file with
-   `fs.watch` and polls OpenCode's state, auto-syncing on change.
-5. **OpenCode export robustness:** `opencode-reader.js` falls back to reading
-   OpenCode's SQLite database directly when the CLI `export` is incomplete. The
-   fallback requires Node.js 22.5+ (`node:sqlite`).
+## License
+
+MIT © neerajvipparla. See [LICENSE](LICENSE).

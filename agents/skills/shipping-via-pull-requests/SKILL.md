@@ -29,7 +29,20 @@ git checkout -b ci/short-description
 
 Branch names: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `ci/` plus a kebab-case phrase naming the outcome — `feat/opencode-to-claude-converter`, `fix/untagged-tool-result-dropped`, `ci/bump-action-versions`.
 
-**One concern per branch.** A branch that fixes a bug *and* renames three functions gets split in two. Reviewers approve what they can hold in their head.
+**One concern per branch.** A single feature or bugfix is one concern, and it includes its tests, docs, and any small related fixes that would be meaningless to ship without it. A branch that fixes a bug *and* renames three functions gets split in two. A branch that adds `--strategy grouped` to `sync` and updates the README and adds a test is one concern. Reviewers approve what they can hold in their head, not what you can fit in one line.
+
+## A feature is one PR, not a family of PRs
+
+A branch named `feat/...` should contain the whole feature as one reviewable unit. That means:
+
+- The implementation code
+- Tests that exercise the new behavior
+- README / CLAUDE.md / skill updates that explain the change to users and future agents
+- Any small fixes you discover along the way that are required for the feature to work (e.g. fixing a stale file path you only notice because you're documenting the new flow)
+
+Do not split a feature into separate PRs for "the code", "the tests", and "the docs" unless each piece could truly be merged and shipped independently. A docs PR that describes a feature that doesn't exist yet is not independently useful; a test PR for code that hasn't merged yet is not independently mergeable. Keep them together.
+
+This is the same rule as "one concern per branch" — the concern is the feature. The docs and tests are part of the feature, not separate concerns.
 
 ## Commits
 
@@ -101,6 +114,9 @@ Always pass `--base` explicitly. Don't rely on `gh pr create`'s default - that f
 | "I'll amend and force-push to address the review comment" | Reviewers lose their place. Push a new commit; squash at merge. |
 | "It's just a workflow file, main is fine" | CI/CD changes go to `main` directly by design (see above) - but still through a PR, not a direct commit. |
 | "The dry-run check is slow, CI will catch it" | The publish workflow only runs on `main` and only checks that a version isn't republished - it does not run the converter dry-run gate. You are still the check for that. |
+| "Docs should be a separate PR" | Docs for a feature that doesn't exist yet are not independently useful. The feature and its docs are one concern. |
+| "Tests should be a separate PR" | A test for code that isn't merged yet can't be merged yet either. Tests are part of the feature. |
+| "I'll make a PR for each step of the feature" | Half-finished plumbing PRs block review and create dependency chains. Open PRs for complete, reviewable slices, or keep the whole feature on one branch. |
 
 ## Red flags
 
@@ -109,4 +125,5 @@ Always pass `--base` explicitly. Don't rely on `gh pr create`'s default - that f
 - A PR touching `converter.js` with no Blast radius note
 - A diff carrying both a bugfix and unrelated cleanup
 - A PR mixing application code with a `.github/workflows/` change
+- A feature split into separate PRs for code, tests, and docs when none can ship independently
 - `git push --force` on a branch that has review comments

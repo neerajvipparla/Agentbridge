@@ -1,0 +1,58 @@
+name: Publish to npm
+
+# Runs whenever package.json changes on main - i.e. dev is merged into main
+# with a version bump - and also on demand via workflow_dispatch. Skips the
+# publish step (without failing the run) if the current version is already
+# on the registry, so a push to main that doesn't bump the version is a
+# harmless no-op instead of a failed "you cannot publish over an existing
+# version" error.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "package.json"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check whether this version is already published
+        id: version-check
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          LOCAL_VERSION=$(node -p "require('./package.json').version")
+          PUBLISHED_VERSION=$(npm view "$NAME" version 2>/dev/null || echo "")
+          echo "local version: $LOCAL_VERSION"
+          echo "published version: ${PUBLISHED_VERSION:-(none)}"
+          if [ "$LOCAL_VERSION" = "$PUBLISHED_VERSION" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        if: steps.version-check.outputs.skip != 'true'
+        run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -4,7 +4,22 @@ name: Publish to npm
 # commits the change with [skip ci] to avoid recursion, pushes the commit
 # and tag, then publishes to npm.
 #
-# Also runs on demand via workflow_dispatch.
+# Publishes with a token (NPM_TOKEN secret) rather than Trusted Publishing
+# (OIDC). Trusted Publishing was tried first and got further - it signs
+# provenance successfully - but the actual publish PUT reliably 404s for
+# scoped packages, a currently open/unresolved upstream npm bug
+# (npm/cli#8976, npm/cli#8678), not a config issue on our end. NPM_TOKEN
+# must be a token created on npmjs.com with "Bypass two-factor
+# authentication" explicitly checked at creation time - a plain token
+# (or one without that box checked) fails publish with EOTP even though
+# it authenticates fine for everything up to that point. That bypass is
+# still allowed for direct publishing until npm's ~Jan 2027 cutoff
+# (https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/);
+# revisit Trusted Publishing once the scoped-package bug above is fixed
+# upstream.
+#
+# Also runs on demand via workflow_dispatch. A manual dispatch ignores the
+# [skip ci] guard so you can re-run after fixing a publish failure.
 on:
   push:
     branches:
@@ -34,8 +49,10 @@ jobs:
       - name: Skip if this is an automated version bump
         id: skip-check
         run: |
-          MESSAGE=$(git log -1 --pretty=%B)
-          if echo "$MESSAGE" | grep -q '\[skip ci\]'; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch; not skipping."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif git log -1 --pretty=%B | grep -q '\[skip ci\]'; then
             echo "Automated version bump detected; skipping."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else

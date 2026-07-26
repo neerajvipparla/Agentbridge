@@ -1,0 +1,15 @@
+{
+  "name": "agentbridge",
+  "version": "0.1.0",
+  "description": "Fork Claude Code chat sessions into OpenCode, versioned as local git commits. Phase 1 of a Claude Code <-> OpenCode context bridge.",
+  "type": "module",
+  "bin": {
+    "agentbridge": "./bin/agentbridge.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  }
+}

@@ -141,7 +141,7 @@ same import/export JSON contract that was reverse-engineered from
 `opencode import ...` / `opencode export ...` and reading OpenCode's generated
 SDK types in `@opencode-ai/sdk/dist/gen/types.gen.d.ts`.
 
-Forward (`converter.js`) mapping:
+Forward (`src/converters/claude-to-opencode.js`) mapping:
 
 ```
 Claude JSONL  →  OpenCode { info, messages:[{info, parts}] }
@@ -158,7 +158,7 @@ Claude JSONL  →  OpenCode { info, messages:[{info, parts}] }
 - Empty assistant turns (e.g. redacted thinking blocks that keep only a
   `signature` and no text) are also skipped to avoid blank bubbles.
 
-Reverse (`opencode-to-claude.js`) mapping:
+Reverse (`src/converters/opencode-to-claude.js`) mapping:
 
 ```
 OpenCode { info, messages:[{info, parts}] }  →  Claude JSONL
@@ -202,9 +202,9 @@ forks if your OpenCode config names them differently.
 
 The `agentbridge sync` command implements steps 1-3:
 
-1. **Both directions get a converter.** Done: `converter.js` (Claude → OpenCode)
-   and `opencode-to-claude.js` (OpenCode → Claude). Both write through the
-   same ledger.
+1. **Both directions get a converter.** Done: `src/converters/claude-to-opencode.js`
+   (Claude → OpenCode) and `src/converters/opencode-to-claude.js` (OpenCode → Claude).
+   Both write through the same ledger.
 2. **The ledger is the source of truth for "what did we last sync".**
    `sync` reads the last ledger commit for the session pair, diffs it against
    the current state of both tools, and only merges the new turns. The merged
@@ -215,6 +215,6 @@ The `agentbridge sync` command implements steps 1-3:
    can resolve manually.
 4. **Live sync:** `agentbridge watch` monitors the Claude JSONL file with
    `fs.watch` and polls OpenCode's state, auto-syncing on change.
-5. **OpenCode export robustness:** `opencode-reader.js` falls back to reading
+5. **OpenCode export robustness:** `src/readers/opencode-reader.js` falls back to reading
    OpenCode's SQLite database directly when the CLI `export` is incomplete. The
    fallback requires Node.js 22.5+ (`node:sqlite`).

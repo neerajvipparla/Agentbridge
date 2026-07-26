@@ -173,22 +173,11 @@ function mergeTimestamp(current, last, diff, opts) {
     }
   }
 
-  // Sort both merged representations by timestamp and recompute parent chains.
-  // Claude: keep assistant + tool-result pairs together.
-  const claudeWithGroups = [];
-  for (let i = 0; i < mergedClaude.length; i++) {
-    const e = mergedClaude[i];
-    const next = mergedClaude[i + 1];
-    if (e.type === "assistant" && next && next.type === "user" && next.parentUuid === e.uuid) {
-      claudeWithGroups.push({ entries: [e, next], ts: toEpochMs(e.timestamp) });
-      i++; // skip the paired result entry
-    } else {
-      claudeWithGroups.push({ entries: [e], ts: toEpochMs(e.timestamp) });
-    }
-  }
-  claudeWithGroups.sort((a, b) => a.ts - b.ts);
-  mergedClaude.length = 0;
-  for (const g of claudeWithGroups) mergedClaude.push(...g.entries);
+  // No sort here, deliberately: mergedClaude/mergedOpenCode are already in
+  // the wanted order (baseline, then this side's own new turns, then the
+  // other side's new turns converted in) from the construction above.
+  // Grouping by origin instead of interleaving by real timestamp is the
+  // contract `timestamp` promises - see the design doc.
 
   let prevUuid = null;
   for (const e of mergedClaude) {
@@ -196,8 +185,6 @@ function mergeTimestamp(current, last, diff, opts) {
     prevUuid = e.uuid;
   }
 
-  // OpenCode: sort by message creation time.
-  mergedOpenCode.sort((a, b) => (a.info?.time?.created || 0) - (b.info?.time?.created || 0));
   let prevOpenCodeId = null;
   for (const m of mergedOpenCode) {
     m.info.parentID = prevOpenCodeId || m.info.sessionID;

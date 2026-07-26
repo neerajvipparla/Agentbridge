@@ -97,12 +97,39 @@ try {
 assert.ok(threw, "abort strategy should throw when both sides changed");
 console.log("PASS T4");
 
-console.log("T5: timestamp merge interleaves both sides correctly");
-const m5 = mergeSync(currentBoth, baseOpenCode, "timestamp", { directory: "/tmp", opencodeId: "ses_test" });
+console.log("T5: timestamp merge groups by origin (own new turns first, then the other side's) - not interleaved by time");
+// Deliberately interleaved timestamps: chronologically, claude q (+2s) < openc q
+// (+3s) < openc a (+4s) < claude a (+5s). If the old sort-by-time behavior were
+// still in place, both sides would show that exact interleaved order. Grouped
+// by origin, each side shows its own two new turns adjacent to each other
+// instead - and the two sides' resulting order differs from each other.
+const currentBothInterleaved = {
+  claudeEntries: [
+    ...baseClaude,
+    claudeEntry("user", "u2", "2026-07-26T10:00:02Z", "claude q", "a1"),
+    claudeEntry("assistant", "a2", "2026-07-26T10:00:05Z", "claude a", "u2"),
+  ],
+  opencodeMessages: [
+    ...baseOpenCode.opencode,
+    ocMsg("user", "msg_u3", 1785060003000, "openc q", "msg_a1"),
+    ocMsg("assistant", "msg_a3", 1785060004000, "openc a", "msg_u3"),
+  ],
+};
+const m5 = mergeSync(currentBothInterleaved, baseOpenCode, "timestamp", { directory: "/tmp", opencodeId: "ses_test" });
 assert.equal(m5.opencodeMessages.length, 6);
 assert.equal(m5.claudeEntries.length, 6);
-const texts = m5.opencodeMessages.map((m) => m.parts[0].text);
-assert.deepEqual(texts, ["hello", "hi there", "claude q", "claude a", "openc q", "openc a"]);
+const opencodeTexts5 = m5.opencodeMessages.map((m) => m.parts[0].text);
+assert.deepEqual(
+  opencodeTexts5,
+  ["hello", "hi there", "openc q", "openc a", "claude q", "claude a"],
+  "OpenCode's own view: its native new turns first, then Claude's, converted"
+);
+const claudeVersions5 = m5.claudeEntries.map((e) => e.version);
+assert.deepEqual(
+  claudeVersions5,
+  ["1.0", "1.0", "1.0", "1.0", "imported-from-opencode", "imported-from-opencode"],
+  "Claude's own view: its native new turns first (version 1.0, from the test fixture), then OpenCode's, converted (version imported-from-opencode)"
+);
 console.log("PASS T5");
 
 console.log("T6: OpenCode export drops baseline messages (server/live export bug)");
